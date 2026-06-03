@@ -36,8 +36,20 @@ def main():
         try:
             h = t.history(period="6mo", interval="1d")
             closes = [float(r["Close"]) for _, r in h.iterrows()]
+            highs = [float(r["High"]) for _, r in h.iterrows()]
+            lows = [float(r["Low"]) for _, r in h.iterrows()]
             volumes = [int(r["Volume"]) for _, r in h.iterrows()]
             dates = [str(idx.date()) for idx in h.index]
+
+            # ATR(14): 평균진폭. True Range = max(고-저, |고-전일종가|, |저-전일종가|)
+            def atr(n=14):
+                trs = []
+                for i in range(1, len(closes)):
+                    tr = max(highs[i]-lows[i], abs(highs[i]-closes[i-1]), abs(lows[i]-closes[i-1]))
+                    trs.append(tr)
+                if len(trs) < n:
+                    return None
+                return round(sum(trs[-n:])/n, 2)
 
             def sma(data, n):
                 return [round(sum(data[i-n:i])/n, 2) if i >= n else None for i in range(len(data))]
@@ -105,6 +117,7 @@ def main():
                 "macd_hist": round(last["macd"]-last["signal"], 2) if last["macd"] and last["signal"] else None,
                 "trend": "bullish_aligned(MA20>MA50)" if last["ma20"] and last["ma50"] and last["ma20"] > last["ma50"] else "bearish_aligned(MA20<MA50)" if last["ma20"] and last["ma50"] else None,
                 "rsi_state": "overbought(>=70)" if last["rsi14"] and last["rsi14"] >= 70 else "oversold(<=30)" if last["rsi14"] and last["rsi14"] <= 30 else "neutral" if last["rsi14"] else None,
+                "atr14": atr(14),
             }
 
             print(json.dumps({"ticker": ticker, "summary": summary, "history": rows}))
