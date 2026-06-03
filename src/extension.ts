@@ -21744,17 +21744,30 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
         while ((match = urlRegex.exec(aiMessage)) !== null) {
             const url = match[1].trim();
             try {
-                // Fetch the HTML content
-                const { data } = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }, timeout: 10000 });
-                // Strip scripts and styles first
-                let cleaned = data.toString()
-                    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-                    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
-                    // Strip remaining HTML tags
-                    .replace(/<[^>]+>/g, ' ')
-                    // Consolidate whitespaces
-                    .replace(/\s+/g, ' ')
-                    .trim();
+                // Fetch the content
+                const resp = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }, timeout: 10000 });
+                const ctype = (resp.headers?.['content-type'] || '').toString().toLowerCase();
+                // axios auto-parses JSON into an object — stringify it back so the model sees the raw data.
+                const raw = typeof resp.data === 'string' ? resp.data : JSON.stringify(resp.data);
+                /* v2.90.1 — 금융 API(JSON/CSV)는 HTML 스트리핑하면 데이터가 깨짐(주가가 15자로
+                   날아가던 문제). 구조화 데이터는 태그 제거 없이 원본을 그대로 모델에 전달. */
+                const isStructured = ctype.includes('json') || ctype.includes('csv')
+                    || ctype.includes('text/plain') || ctype.includes('application/')
+                    || /stooq\.com|finance\.yahoo|\.csv(\?|$)|\/v8\/finance/i.test(url);
+                let cleaned: string;
+                if (isStructured) {
+                    cleaned = raw.replace(/\s+/g, ' ').trim();
+                } else {
+                    // Strip scripts and styles first
+                    cleaned = raw
+                        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+                        .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+                        // Strip remaining HTML tags
+                        .replace(/<[^>]+>/g, ' ')
+                        // Consolidate whitespaces
+                        .replace(/\s+/g, ' ')
+                        .trim();
+                }
                 
                 const preview = cleaned.slice(0, 500);
                 report.push(`🌐 웹사이트 읽기: ${url} (${cleaned.length}자)\n\`\`\`\n${preview}...\n\`\`\``);
