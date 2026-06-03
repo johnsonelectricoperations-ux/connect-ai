@@ -19063,8 +19063,13 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             // 4.5 자율 열람 (Second Brain 및 웹 검색): AI가 <read_brain> 또는 <read_url>을 사용했는지 확인
             const brainReads = [...aiMessage.matchAll(/<read_brain>([\s\S]*?)<\/read_brain>/g)];
             const urlReads = [...aiMessage.matchAll(/<read_url>([\s\S]*?)<\/read_url>/gi)];
+            /* v2.90.4 — run_command도 read_url처럼 "실행 → 결과 받아 AI가 이어서 분석"하도록
+               자동 후속 처리에 포함. 이전엔 run_command가 _executeActions에서 실행만 되고
+               결과가 다음 턴 히스토리에만 들어가서, AI가 같은 답변에서 분석을 못 했음
+               (예: `py stock.py IONQ` 만 찍히고 멈춤). */
+            const cmdReads = [...aiMessage.matchAll(/<(?:run_command|command|bash|terminal)>([\s\S]*?)<\/(?:run_command|command|bash|terminal)>/gi)];
 
-            if (brainReads.length > 0 || urlReads.length > 0) {
+            if (brainReads.length > 0 || urlReads.length > 0 || cmdReads.length > 0) {
                 let fetchedContent = '';
                 let uiFeedbackStr = '';
                 
@@ -19096,8 +19101,38 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                     }
                 }
 
+                // run_command 실행 처리 (read_url과 동일 패턴 — 결과를 follow-up 분석에 주입)
+                for (const match of cmdReads) {
+                    let cmd = match[1].trim();
+                    if (cmd.startsWith('```')) {
+                        const lines = cmd.split('\n');
+                        if (lines[0].startsWith('```')) lines.shift();
+                        if (lines.length > 0 && lines[lines.length - 1].startsWith('```')) lines.pop();
+                        cmd = lines.join('\n').trim();
+                    }
+                    if (!cmd) continue;
+                    const cmdRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+                        || (vscode.window.activeTextEditor && vscode.window.activeTextEditor.document.uri.scheme === 'file'
+                            ? path.dirname(vscode.window.activeTextEditor.document.uri.fsPath)
+                            : undefined)
+                        || (() => { try { const d = getCompanyDir(); return d && fs.existsSync(d) ? d : undefined; } catch { return undefined; } })()
+                        || (() => { try { const d = _getBrainDir(); return d && fs.existsSync(d) ? d : undefined; } catch { return undefined; } })()
+                        || process.cwd();
+                    const startMsg = `\n\n> 🖥️ **[명령 실행]** \`${cmd}\`\n\n`;
+                    uiFeedbackStr += startMsg;
+                    this._view.webview.postMessage({ type: 'streamChunk', value: startMsg });
+                    try {
+                        const result = await runCommandCaptured(cmd, cmdRoot, () => { /* 무음 — 결과는 분석으로 */ }, 5 * 60 * 1000);
+                        const out = (result.output || '').toString().slice(0, 15000);
+                        fetchedContent += `\n\n[COMMAND OUTPUT: ${cmd}] (exit ${result.exitCode}${result.timedOut ? ', timed out' : ''})\n${out}\n`;
+                    } catch (err: any) {
+                        fetchedContent += `\n\n[COMMAND OUTPUT: ${cmd}] (FAILED: ${err.message})\n`;
+                    }
+                }
+
                 const cleanedResponse = aiMessage.replace(/<read_brain>[\s\S]*?<\/read_brain>/g, '')
-                                                 .replace(/<read_url>[\s\S]*?<\/read_url>/gi, '').trim();
+                                                 .replace(/<read_url>[\s\S]*?<\/read_url>/gi, '')
+                                                 .replace(/<(?:run_command|command|bash|terminal)>[\s\S]*?<\/(?:run_command|command|bash|terminal)>/gi, '').trim();
                 
                 if (brainReads.length > 0) {
                     const msg = `\n\n> 🧠 **[Second Brain 열람 완료]** 스캔한 핵심 지식을 바탕으로 답변을 구성합니다...\n\n`;
@@ -19106,7 +19141,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                 }
                 
                 reqMessages.push({ role: 'assistant', content: cleanedResponse || '탐색을 진행 중입니다...' });
-                reqMessages.push({ role: 'user', content: `[SYSTEM: The following documents and web contents were retrieved based on your actions. Use this information to provide a complete and accurate answer to the user's original question.]\n${fetchedContent}\n\nNow answer the user's question using the above knowledge. Do NOT output <read_brain> or <read_url> again. Answer directly and comprehensively.` });
+                reqMessages.push({ role: 'user', content: `[SYSTEM: The following documents, web contents, and command outputs were retrieved by running your actions. Use ONLY these real results — do not invent numbers. If a COMMAND OUTPUT contains JSON, cite its actual values.]\n${fetchedContent}\n\nNow answer the user's question using the above results. Do NOT output <read_brain>, <read_url>, or <run_command> again. Answer directly and comprehensively in Korean.` });
 
                 // 2차 스트리밍 시작 (followUp)
                 const followUpResponse = await axios.post(apiUrl, {
