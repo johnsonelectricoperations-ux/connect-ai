@@ -21,7 +21,7 @@ VS Code 확장(connect-ai-lab.vsix)을 미국 주식 투자 분석 AI로 개조.
 | 단계 | 작업 | 상태 |
 |------|------|------|
 | 1주차 | agents.ts + prompts 교체 → 투자 프로토타입 | ✅ 완료 |
-| 2~3주차 | 시세/재무 데이터 도구 (yfinance, 기술지표 자동계산) | 🔄 진행중 |
+| 2~3주차 | 시세/재무 데이터 도구 (yfinance, 기술지표 자동계산) | ✅ 완료 |
 | 4~5주차 | 증권사 API (잔고/주문), 백테스팅 도구 | ⬜ 미시작 |
 | 6주차 | 브레인 템플릿 (종목분석지·투자일지), 면책고지 강제화 | ⬜ 미시작 |
 | 상시 | 환각 방지 가드레일, 법적 검토 | 🔄 진행중 |
@@ -39,51 +39,72 @@ VS Code 확장(connect-ai-lab.vsix)을 미국 주식 투자 분석 AI로 개조.
 - `assets/prompts/ceo-classifier.md`: 투자 도메인 라우팅 규칙
 - `assets/prompts/ceo-chat.md`: CIO 소개 메시지
 
-### 2~3주차 — 데이터 도구
-- `stock.py` 생성 (yfinance 기반):
-  - `py stock.py TICKER` → JSON: price, marketCap, trailingPE, forwardPE, priceToSales, eps, high52, low52, sector
-  - `py stock.py TICKER hist` → JSON: 최근 60거래일 일봉 (date/close/volume)
-- run_command 자동 분석 (v2.90.4): 명령 실행 후 결과를 AI가 자동 분석
+### 2~3주차 — 데이터 도구 (v2.91.0 기준 완료)
+- `stock.py` (yfinance 기반):
+  - `py stock.py TICKER` → price, marketCap, trailingPE, forwardPE, priceToSales, eps, high52, low52, sector
+  - `py stock.py TICKER hist` → 60일 일봉 + **기술지표 자동계산**: RSI(14), MA(20/50), MACD(12/26/9), Signal, Histogram + summary 필드
+  - summary: trend(bullish_aligned/bearish_aligned), rsi_state(overbought/oversold/neutral)
+- `update.bat`: git pull + stock.py 동기화 자동화 (더블클릭 한 번)
+- run_command 자동 분석: 명령 실행 후 결과를 AI가 자동 분석
+
+### 에이전트 페르소나 강화 (v2.90.6~v2.91.0)
+- **펀더멘털분석가**: EPS 해석 규칙 주입 — trailing EPS 양수라도 흑자 단정 금지, forward PER 음수 = "향후 적자 예상"
+- **기술분석가**: RSI/MA/MACD 해석 규칙 + hist 명령 사용 의무화
+- **리스크매니저**: 포지션 사이징 공식, R:R 1:2, 손절 기준 주입
 
 ### 상시 — 환각 방지
-- system.md: "수치는 stock.py 결과만 인용, null이면 확인 실패 표기" 원칙
-- 펀더멘털분석가 페르소나에 EPS 해석 규칙 직접 주입 (v2.90.6):
-  - trailing EPS 양수라도 흑자 단정 금지
-  - forward PER 음수 = "향후 적자 예상이라 PER 무의미" (배수로 읽지 말 것)
-- brain 폴더에 지식 파일 3개:
-  - `10_Wiki/투자지식/펀더멘털_지표해석.md`
-  - `10_Wiki/투자지식/기술지표_해석법.md`
-  - `10_Wiki/투자지식/리스크관리_규칙.md`
+- system.md: 차트 분석 시 hist 필수, 추측 금지, null = "확인 실패" 원칙
+- brain 폴더 지식 파일 3개 (C:\project_list\ai_agent_antigravity\10_Wiki\투자지식\):
+  - `펀더멘털_지표해석.md`, `기술지표_해석법.md`, `리스크관리_규칙.md`
 
 ---
 
-## 현재 버전: 2.90.6
+## 현재 버전: 2.91.0
 
-### 알려진 문제 / 미해결
-- [ ] `stock.py hist` 데이터에서 RSI/MACD/MA 자동 계산 없음 → AI가 raw 데이터만 받음
-- [ ] 기술분석가 페르소나에 RSI/MACD 해석 규칙 미주입
-- [ ] 리스크매니저 페르소나에 포지션 사이징 공식 미주입
-- [ ] OpenDART / SEC Edgar 연동 없음
-- [ ] 다중 에이전트 연계 (CIO가 여러 전문가 동시 호출) 미구현
-- [ ] 투자일지·종목분석 brain 템플릿 없음
+### 검증 완료
+- ✅ `py stock.py IONQ` → 실시간 가격·밸류에이션 정확
+- ✅ `py stock.py IONQ hist` → RSI 71.71, MA20 56.7, MACD 7.02 등 계산값 정확
+- ✅ 기술분석가: hist 실행 후 실제 지표값으로 분석 (IONQ 차트 분석 테스트 통과)
+- ✅ 펀더멘털분석가: forward PER 음수 해석 개선
 
 ---
 
-## 다음 작업 (2~3주차 완성)
+## 다음 작업 (에이전트 데이터 연결)
 
-### Step 1 — stock.py에 기술지표 계산 추가 ← 현재 여기
-`py stock.py TICKER hist` 결과에 RSI(14), MA(20/50), MACD(12/26/9) 자동 계산 추가.
-- 파일: `stock.py`
-- 목표: AI가 raw 가격 대신 계산된 지표를 바로 받아 분석
+### Step 1 — stock.py 확장 ← 다음 여기
+`py stock.py TICKER`에 베타(β), 애널리스트 목표가, 재무지표(ROE·부채비율) 추가.
+- 리스크매니저·펀더멘털분석가 품질 향상
+- yfinance로 모두 가능 (외부 API 불필요)
 
-### Step 2 — 기술분석가·리스크매니저 페르소나 업데이트
-핵심 해석 규칙을 페르소나에 직접 주입.
+### Step 2 — macro.py 신규
+VIX(`^VIX`), S&P500(`^GSPC`), 달러인덱스(`DX-Y.NYB`), 10년물 금리(`^TNX`), 환율(`KRW=X`) 조회.
+- 매크로분석가·센티먼트분석가 활성화
 
-### Step 3 — ceo-classifier.md 다중 에이전트 연계
-복합 질문("IONQ 종합 분석") 시 기술분석가 + 펀더멘털분석가 + 리스크매니저 순서로 연계.
+### Step 3 — 공포탐욕지수 연결
+CNN Fear & Greed API (무료, 인증 없음).
+- 센티먼트분석가 완성
 
-### Step 4 — 투자일지 brain 템플릿
-종목 분석지 (brain에 저장), 투자일지 자동 기록.
+### Step 4 — 종합 분석 흐름
+"IONQ 종합 분석해줘" → 기술분석가 + 펀더멘털분석가 + 리스크매니저 순서로 연계.
+
+### Step 5 — 브레인 템플릿 (6주차)
+종목 분석지·투자일지 brain 템플릿 생성.
+
+---
+
+## 에이전트별 데이터 연결 현황
+
+| 에이전트 | 필요 데이터 | 상태 | 연결 방법 |
+|---------|-----------|------|---------|
+| 기술분석가 | RSI, MA, MACD | ✅ 완료 | stock.py hist |
+| 펀더멘털분석가 | PER, EPS, 재무제표, 목표가 | 🟡 기본만 | stock.py 확장 |
+| 리스크매니저 | 베타(β), ATR | ❌ 없음 | stock.py 확장 |
+| 매크로분석가 | 금리, VIX, DXY, 환율 | ❌ 없음 | macro.py 신규 |
+| 센티먼트분석가 | VIX, 공포탐욕지수 | ❌ 없음 | CNN API (무료) |
+| 리서처 | 뉴스, SEC 공시 | 🟡 검색만 | SEC Edgar API |
+| 포트폴리오매니저 | 실적발표일, 배당일 | ❌ 없음 | stock.py 확장 |
+| 퀀트엔지니어 | 히스토리 데이터 | ✅ hist | - |
+| 리포트작가 | 없음 (결과 종합) | ✅ | - |
 
 ---
 
@@ -92,8 +113,9 @@ VS Code 확장(connect-ai-lab.vsix)을 미국 주식 투자 분석 AI로 개조.
 - OS: Windows 11, i5-13400F, AMD RX 7600 8GB, RAM 32GB
 - LM Studio: 포트 12345, Qwen3.5-9B Q4_K_M, Context 16384, GPU Offload 32
 - Python: py 3.14.2 (py 명령어 사용)
-- 워크스페이스: C:\project_list\NA-stock-ai (stock.py 여기에도 복사 필요)
-- Brain 폴더: C:\project_list\ai_agent_antigravity
+- 워크스페이스: C:\project_list\NA-stock-ai (stock.py 여기에 복사해서 사용)
+- Brain 폴더: C:\project_list\ai_agent_antigravity\10_Wiki\투자지식\
+- update.bat: C:\project_list\connect-ai\update.bat (더블클릭으로 pull + stock.py 동기화)
 
 ---
 
