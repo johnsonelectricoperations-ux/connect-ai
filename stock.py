@@ -138,7 +138,40 @@ def main():
         "high52": fast("yearHigh") or g("fiftyTwoWeekHigh"),
         "low52": fast("yearLow") or g("fiftyTwoWeekLow"),
         "sector": g("sector"),
+        # 리스크매니저용: 변동성 지표
+        "beta": g("beta"),
+        # 펀더멘털분석가용: 재무 건전성·수익성
+        "roe": g("returnOnEquity"),               # 자기자본이익률 (소수, 0.15 = 15%)
+        "debtToEquity": g("debtToEquity"),         # 부채비율
+        "profitMargin": g("profitMargins"),        # 순이익률 (소수)
+        "revenueGrowth": g("revenueGrowth"),       # 매출성장률 (소수, YoY)
+        "freeCashflow": g("freeCashflow"),         # 잉여현금흐름
+        # 애널리스트 컨센서스: 목표가·투자의견
+        "targetMean": g("targetMeanPrice"),        # 평균 목표가
+        "targetHigh": g("targetHighPrice"),
+        "targetLow": g("targetLowPrice"),
+        "recommendation": g("recommendationKey"),  # buy/hold/sell 등
+        "numAnalysts": g("numberOfAnalystOpinions"),
+        # 포트폴리오매니저용: 일정·배당
+        "dividendYield": g("dividendYield"),       # 배당수익률
+        "earningsDate": None,                      # 아래에서 별도 조회
     }
+
+    # 다음 실적 발표일 (포트폴리오매니저용)
+    try:
+        cal = t.calendar
+        if cal is not None:
+            ed = None
+            if isinstance(cal, dict):
+                ed = cal.get("Earnings Date")
+            if ed:
+                if isinstance(ed, (list, tuple)) and ed:
+                    out["earningsDate"] = str(ed[0])
+                else:
+                    out["earningsDate"] = str(ed)
+    except Exception:
+        pass
+
     if out["price"] is None:
         print(json.dumps({"error": f"{ticker} 가격 조회 실패 — 티커 확인 또는 네트워크 점검."}, ensure_ascii=False))
         return
