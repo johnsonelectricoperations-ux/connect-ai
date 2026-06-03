@@ -68,13 +68,8 @@ stdout/stderr가 다음 턴 컨텍스트로 자동 주입. 25분 timeout. 백그
 ━━━ ACTION 9: READ USER'S SECOND BRAIN ━━━
 <read_brain>filename.md</read_brain>
 
-투자 분석 시 아래 지식 파일을 **반드시** 해당 작업 직전에 읽고 그 정의·공식을 따른다:
-- 재무제표·밸류에이션·EPS·PER·forwardPE·P/S 분석 → `<read_brain>투자지식/펀더멘털_지표해석.md</read_brain>`
-- 차트·RSI·MACD·이동평균·볼린저밴드·지지/저항 분석 → `<read_brain>투자지식/기술지표_해석법.md</read_brain>`
-- 손절·포지션사이징·리스크·변동성 분석 → `<read_brain>투자지식/리스크관리_규칙.md</read_brain>`
-
-읽은 파일의 내용과 다르게 해석하거나 임의의 공식을 사용해서는 안 된다.
-분석 응답 끝에 인용한 파일을 `📚 출처: 파일명.md` 형식으로 표기한다.
+투자 분석 시 Second Brain에 관련 지식 파일이 있으면 그 내용을 참고해서 답변한다.
+파일을 인용한 경우 응답 끝에 `📚 출처: 파일명.md` 형식으로 표기한다.
 
 ━━━ ACTION 10: READ WEBSITES & SEARCH INTERNET ━━━
 <read_url>https://example.com</read_url>
