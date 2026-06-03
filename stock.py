@@ -125,6 +125,100 @@ def main():
             print(json.dumps({"error": f"history 조회 실패: {e}"}, ensure_ascii=False))
         return
 
+    # risk 모드: 리스크 관리용 데이터 + 손절가·포지션 사이징 사전계산
+    # 사용법: py stock.py TICKER risk           → 총자산 1000만원·위험 1% 기본 가정
+    #         py stock.py TICKER risk 5000000 2 → 총자산 500만원·위험 2%
+    if mode == "risk":
+        info = {}
+        try:
+            info = t.info or {}
+        except Exception:
+            info = {}
+        price = fast("lastPrice") or info.get("currentPrice")
+        if price is None:
+            print(json.dumps({"error": f"{ticker} 가격 조회 실패."}, ensure_ascii=False))
+            return
+        beta = info.get("beta")
+        high52 = fast("yearHigh") or info.get("fiftyTwoWeekHigh")
+        low52 = fast("yearLow") or info.get("fiftyTwoWeekLow")
+
+        # ATR(14) 계산
+        atr_val = None
+        try:
+            h = t.history(period="3mo", interval="1d")
+            cl = [float(r["Close"]) for _, r in h.iterrows()]
+            hi = [float(r["High"]) for _, r in h.iterrows()]
+            lo = [float(r["Low"]) for _, r in h.iterrows()]
+            trs = [max(hi[i]-lo[i], abs(hi[i]-cl[i-1]), abs(lo[i]-cl[i-1])) for i in range(1, len(cl))]
+            if len(trs) >= 14:
+                atr_val = round(sum(trs[-14:])/14, 2)
+        except Exception:
+            pass
+
+        # 총자산·위험% (인자 없으면 기본값)
+        try:
+            capital = float(sys.argv[3]) if len(sys.argv) > 3 else 10000000.0
+        except Exception:
+            capital = 10000000.0
+        try:
+            risk_pct = float(sys.argv[4]) if len(sys.argv) > 4 else 1.0
+        except Exception:
+            risk_pct = 1.0
+
+        # 베타 기반 권장 비중 상한
+        if beta is None:
+            weight_cap = 5.0
+        elif beta >= 2:
+            weight_cap = 2.5   # 고변동 → 절반
+        elif beta > 1:
+            weight_cap = 4.0
+        else:
+            weight_cap = 5.0
+
+        # 손절 후보: ① 고정 -8%  ② ATR×2
+        stops = {}
+        stop_fixed = round(price * 0.92, 2)
+        stops["fixed_-8pct"] = stop_fixed
+        if atr_val:
+            stops["atr_2x"] = round(price - atr_val*2, 2)
+
+        # 각 손절 기준별 포지션 사이징
+        risk_amount = capital * (risk_pct/100.0)
+        sizing = []
+        for label, stop in stops.items():
+            dist = round(price - stop, 2)
+            if dist <= 0:
+                continue
+            shares = int(risk_amount // dist)
+            cost = round(shares * price, 0)
+            weight = round(cost/capital*100, 1)
+            # 비중 상한 초과 시 상한으로 조정
+            capped = False
+            max_cost = capital * (weight_cap/100.0)
+            if cost > max_cost:
+                shares = int(max_cost // price)
+                cost = round(shares * price, 0)
+                weight = round(cost/capital*100, 1)
+                capped = True
+            sizing.append({
+                "stop_type": label, "stop_price": stop, "stop_distance": dist,
+                "stop_pct": round(dist/price*100, 1),
+                "shares": shares, "position_cost": cost, "weight_pct": weight,
+                "max_loss": round(shares*dist, 0), "weight_capped": capped,
+                "target_1to2_RR": round(price + dist*2, 2),
+            })
+
+        print(json.dumps({
+            "ticker": ticker, "name": info.get("shortName") or info.get("longName"),
+            "price": price, "beta": beta, "atr14": atr_val,
+            "high52": high52, "low52": low52,
+            "assumed_capital": capital, "risk_pct": risk_pct,
+            "weight_cap_pct": weight_cap,
+            "position_sizing": sizing,
+            "note": "shares=매수가능수량, max_loss=손절시손실액, target_1to2_RR=손익비1:2목표가. capital/risk는 인자로 변경가능: py stock.py TICKER risk 총자산 위험%",
+        }, ensure_ascii=False))
+        return
+
     # 기본: 현재가 + 밸류에이션
     info = {}
     try:
