@@ -155,15 +155,26 @@ def main():
         except Exception:
             pass
 
-        # 총자산·위험% (인자 없으면 기본값)
+        # 총자산·위험% (인자 없으면 기본값). ⚠️ 미국 주식이므로 총자산도 USD 기준.
         try:
-            capital = float(sys.argv[3]) if len(sys.argv) > 3 else 10000000.0
+            capital = float(sys.argv[3]) if len(sys.argv) > 3 else 10000.0  # 기본 $10,000
         except Exception:
-            capital = 10000000.0
+            capital = 10000.0
         try:
             risk_pct = float(sys.argv[4]) if len(sys.argv) > 4 else 1.0
         except Exception:
             risk_pct = 1.0
+
+        # 다음 실적 발표일 (환각 방지 — 실제 값 제공)
+        earnings_date = None
+        try:
+            cal = t.calendar
+            if isinstance(cal, dict):
+                ed = cal.get("Earnings Date")
+                if ed:
+                    earnings_date = str(ed[0]) if isinstance(ed, (list, tuple)) and ed else str(ed)
+        except Exception:
+            pass
 
         # 베타 기반 권장 비중 상한
         if beta is None:
@@ -211,11 +222,11 @@ def main():
         print(json.dumps({
             "ticker": ticker, "name": info.get("shortName") or info.get("longName"),
             "price": price, "beta": beta, "atr14": atr_val,
-            "high52": high52, "low52": low52,
-            "assumed_capital": capital, "risk_pct": risk_pct,
+            "high52": high52, "low52": low52, "earningsDate": earnings_date,
+            "assumed_capital_usd": capital, "currency": "USD", "risk_pct": risk_pct,
             "weight_cap_pct": weight_cap,
             "position_sizing": sizing,
-            "note": "shares=매수가능수량, max_loss=손절시손실액, target_1to2_RR=손익비1:2목표가. capital/risk는 인자로 변경가능: py stock.py TICKER risk 총자산 위험%",
+            "note": "⚠️모든 금액 USD. assumed_capital_usd=가정 총자산($), shares=매수가능수량, position_cost=매수금액($), max_loss=손절시손실액($), target_1to2_RR=손익비1:2목표가($). 총자산/위험% 변경: py stock.py TICKER risk 달러총자산 위험%",
         }, ensure_ascii=False))
         return
 
