@@ -34,13 +34,80 @@ def main():
 
     if mode in ("hist", "history", "chart"):
         try:
-            h = t.history(period="3mo", interval="1d")
-            rows = [
-                {"date": str(idx.date()), "close": round(float(r["Close"]), 2),
-                 "volume": int(r["Volume"])}
-                for idx, r in h.tail(60).iterrows()
-            ]
-            print(json.dumps({"ticker": ticker, "history": rows}, ensure_ascii=False))
+            h = t.history(period="6mo", interval="1d")
+            closes = [float(r["Close"]) for _, r in h.iterrows()]
+            volumes = [int(r["Volume"]) for _, r in h.iterrows()]
+            dates = [str(idx.date()) for idx in h.index]
+
+            def sma(data, n):
+                return [round(sum(data[i-n:i])/n, 2) if i >= n else None for i in range(len(data))]
+
+            def ema(data, n):
+                result, k = [], 2/(n+1)
+                for i, v in enumerate(data):
+                    if i == 0:
+                        result.append(round(v, 2))
+                    else:
+                        result.append(round(v*k + result[-1]*(1-k), 2))
+                return result
+
+            def rsi(data, n=14):
+                result = [None]*n
+                gains, losses = [], []
+                for i in range(1, len(data)):
+                    d = data[i] - data[i-1]
+                    gains.append(max(d, 0))
+                    losses.append(max(-d, 0))
+                if len(gains) < n:
+                    return result
+                ag = sum(gains[:n])/n
+                al = sum(losses[:n])/n
+                result.append(round(100 - 100/(1 + ag/al), 2) if al != 0 else 100.0)
+                for i in range(n, len(gains)):
+                    ag = (ag*(n-1) + gains[i])/n
+                    al = (al*(n-1) + losses[i])/n
+                    result.append(round(100 - 100/(1 + ag/al), 2) if al != 0 else 100.0)
+                return result
+
+            ma20 = sma(closes, 20)
+            ma50 = sma(closes, 50)
+            ema12 = ema(closes, 12)
+            ema26 = ema(closes, 26)
+            macd_line = [round(a-b, 2) if a and b else None for a, b in zip(ema12, ema26)]
+            macd_vals = [v for v in macd_line if v is not None]
+            signal_raw = ema(macd_vals, 9)
+            signal_line = [None]*(len(macd_line)-len(macd_vals)) + signal_raw
+            rsi14 = rsi(closes, 14)
+
+            # 최근 60일만 출력
+            n = min(60, len(dates))
+            rows = []
+            for i in range(len(dates)-n, len(dates)):
+                rows.append({
+                    "date": dates[i],
+                    "close": round(closes[i], 2),
+                    "volume": volumes[i],
+                    "ma20": ma20[i],
+                    "ma50": ma50[i],
+                    "rsi14": rsi14[i],
+                    "macd": macd_line[i],
+                    "signal": signal_line[i],
+                })
+
+            last = rows[-1]
+            summary = {
+                "price": last["close"],
+                "ma20": last["ma20"],
+                "ma50": last["ma50"],
+                "rsi14": last["rsi14"],
+                "macd": last["macd"],
+                "macd_signal": last["signal"],
+                "macd_hist": round(last["macd"]-last["signal"], 2) if last["macd"] and last["signal"] else None,
+                "trend": "정배열" if last["ma20"] and last["ma50"] and last["ma20"] > last["ma50"] else "역배열" if last["ma20"] and last["ma50"] else None,
+                "rsi_state": "과매수" if last["rsi14"] and last["rsi14"] >= 70 else "과매도" if last["rsi14"] and last["rsi14"] <= 30 else "중립" if last["rsi14"] else None,
+            }
+
+            print(json.dumps({"ticker": ticker, "summary": summary, "history": rows}, ensure_ascii=False))
         except Exception as e:
             print(json.dumps({"error": f"history 조회 실패: {e}"}, ensure_ascii=False))
         return
