@@ -17918,8 +17918,19 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                 ignoreFocusOut: true
             });
             if (val !== undefined) {
-                this._systemPrompt = val.trim() || SYSTEM_PROMPT;
-                this._ctx.globalState.update('aiSystemPrompt', this._systemPrompt);
+                /* v2.90.2 — 빈 칸 제출 = "기본값으로 초기화"는 globalState에 그 시점의
+                   SYSTEM_PROMPT 사본을 저장했었음. 그러면 이후 system.md(기본 프롬프트)를
+                   업데이트해도 저장된 옛 사본이 계속 우선해서(line 16241) 새 빌드가 반영 안 됐음.
+                   이제 초기화 시엔 저장 키를 '삭제'해서 항상 최신 system.md를 따르게 한다.
+                   사용자가 직접 커스텀 프롬프트를 넣은 경우에만 저장한다. */
+                const custom = val.trim();
+                if (custom) {
+                    this._systemPrompt = custom;
+                    this._ctx.globalState.update('aiSystemPrompt', custom);
+                } else {
+                    this._systemPrompt = SYSTEM_PROMPT;
+                    this._ctx.globalState.update('aiSystemPrompt', undefined); /* clear cache → 최신 기본 프롬프트 사용 */
+                }
                 this._initHistory();
                 this._saveHistory();
                 vscode.window.showInformationMessage('시스템 프롬프트가 변경되어 새 대화가 시작되었습니다.');
