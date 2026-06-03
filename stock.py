@@ -10,6 +10,13 @@
 
 import sys, json
 
+# Windows 콘솔(cp949) 인코딩 충돌 방지 — 한글·기호 출력 시 UnicodeEncodeError로
+# 크래시하던 문제 차단. 항상 UTF-8로 출력 강제.
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except Exception:
+    pass
+
 def main():
     if len(sys.argv) < 2:
         print(json.dumps({"error": "ticker 인자가 필요합니다. 예: py stock.py AAPL"}))
@@ -155,7 +162,7 @@ def main():
         except Exception:
             pass
 
-        # 총자산·위험% (인자 없으면 기본값). ⚠️ 미국 주식이므로 총자산도 USD 기준.
+        # 총자산·위험% (인자 없으면 기본값). 미국 주식이므로 총자산도 USD 기준.
         try:
             capital = float(sys.argv[3]) if len(sys.argv) > 3 else 10000.0  # 기본 $10,000
         except Exception:
@@ -226,7 +233,7 @@ def main():
             "assumed_capital_usd": capital, "currency": "USD", "risk_pct": risk_pct,
             "weight_cap_pct": weight_cap,
             "position_sizing": sizing,
-            "note": "⚠️모든 금액 USD. assumed_capital_usd=가정 총자산($), shares=매수가능수량, position_cost=매수금액($), max_loss=손절시손실액($), target_1to2_RR=손익비1:2목표가($). 총자산/위험% 변경: py stock.py TICKER risk 달러총자산 위험%",
+            "note": "모든 금액 USD. assumed_capital_usd=가정 총자산($), shares=매수가능수량, position_cost=매수금액($), max_loss=손절시손실액($), target_1to2_RR=손익비1:2목표가($). 총자산/위험% 변경: py stock.py TICKER risk 달러총자산 위험%",
         }, ensure_ascii=False))
         return
 
