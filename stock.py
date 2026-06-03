@@ -103,11 +103,11 @@ def main():
                 "macd": last["macd"],
                 "macd_signal": last["signal"],
                 "macd_hist": round(last["macd"]-last["signal"], 2) if last["macd"] and last["signal"] else None,
-                "trend": "정배열" if last["ma20"] and last["ma50"] and last["ma20"] > last["ma50"] else "역배열" if last["ma20"] and last["ma50"] else None,
-                "rsi_state": "과매수" if last["rsi14"] and last["rsi14"] >= 70 else "과매도" if last["rsi14"] and last["rsi14"] <= 30 else "중립" if last["rsi14"] else None,
+                "trend": "bullish_aligned(MA20>MA50)" if last["ma20"] and last["ma50"] and last["ma20"] > last["ma50"] else "bearish_aligned(MA20<MA50)" if last["ma20"] and last["ma50"] else None,
+                "rsi_state": "overbought(>=70)" if last["rsi14"] and last["rsi14"] >= 70 else "oversold(<=30)" if last["rsi14"] and last["rsi14"] <= 30 else "neutral" if last["rsi14"] else None,
             }
 
-            print(json.dumps({"ticker": ticker, "summary": summary, "history": rows}, ensure_ascii=False))
+            print(json.dumps({"ticker": ticker, "summary": summary, "history": rows}))
         except Exception as e:
             print(json.dumps({"error": f"history 조회 실패: {e}"}, ensure_ascii=False))
         return
