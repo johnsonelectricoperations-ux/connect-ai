@@ -1459,7 +1459,11 @@ async function listInstalledModels(): Promise<{ id: string; backend: 'ollama' | 
   };
   const queryLMStudio = async () => {
     try {
-      const r = await axios.get('http://127.0.0.1:1234/v1/models', { timeout: 1500 });
+      /* v2.89.158 — 사용자가 비표준 포트(예: 12345)를 쓰면 하드코딩된 1234로는
+         모델 목록을 못 가져와 드롭다운이 비어 보이던 문제 수정. 설정된 ollamaBase가
+         LM Studio면 그 주소를 그대로 쓰고, 아니면(=Ollama 모드 fallback) 기본 1234. */
+      const lmBase = _isLMStudioEngine(ollamaBase) ? ollamaBase : 'http://127.0.0.1:1234';
+      const r = await axios.get(`${lmBase}/v1/models`, { timeout: 1500 });
       const models = r.data?.data || [];
       for (const m of models) {
         if (m?.id) out.push({ id: m.id, backend: 'lmstudio' });
@@ -7958,7 +7962,22 @@ export function activate(context: vscode.ExtensionContext) {
                 let modelName = '';
                 
                 // Step 1: AI 엔진 자동 감지
+                /* v2.89.158 — 사용자가 settings.json에 이미 비표준 포트(예: 12345)를
+                   직접 넣은 경우 그 주소를 먼저 확인. 이전엔 무조건 1234만 찔러봐서
+                   커스텀 포트 사용자는 자동 감지가 항상 실패했음. */
+                const _preset = (vscode.workspace.getConfiguration('connectAiLab').get<string>('ollamaUrl') || '').trim();
+                if (_preset && !_preset.includes('11434')) {
+                    try {
+                        const presetRes = await axios.get(`${_preset}/v1/models`, { timeout: 2000 });
+                        if (presetRes.data?.data?.length > 0) {
+                            engineName = 'LM Studio';
+                            modelName = presetRes.data.data[0].id;
+                            await vscode.workspace.getConfiguration('connectAiLab').update('defaultModel', modelName, vscode.ConfigurationTarget.Global);
+                        }
+                    } catch {}
+                }
                 try {
+                    if (engineName) throw new Error('already detected');
                     const lmRes = await axios.get('http://127.0.0.1:1234/v1/models', { timeout: 2000 });
                     if (lmRes.data?.data?.length > 0) {
                         engineName = 'LM Studio';
