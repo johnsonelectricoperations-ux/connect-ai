@@ -420,13 +420,46 @@ def main():
         return
 
     # 데이터 품질 검증 — yfinance가 비현실적 값을 내보낼 때 차단 (날조 방지).
-    # 예: IONQ(적자기업)에 profitMargins=1.7488(=174.88%) 같은 명백한 오류값.
-    # 순이익률은 net income/revenue라 +100% 초과는 사실상 데이터 오류.
+    # 저장·재인용 시 오염을 막으려면 입력 단계에서 거른다. 거른 필드는 None으로
+    # 바꾸고 data_warnings에 사유를 남겨, 모델이 복원·추정하지 못하게 한다.
     data_warnings = []
-    pm = out.get("profitMargin")
-    if pm is not None and (pm > 1.0 or pm < -10.0):
-        data_warnings.append(f"profitMargin({pm}) 비현실적 → 미제공 처리")
-        out["profitMargin"] = None
+
+    def _reject(field, low, high, reason):
+        """out[field]가 [low, high] 밖이면 None으로 차단하고 경고 기록."""
+        v = out.get(field)
+        if v is None:
+            return
+        try:
+            fv = float(v)
+        except (TypeError, ValueError):
+            return
+        if fv < low or fv > high:
+            data_warnings.append(f"{field}({v}) {reason} → 미제공 처리")
+            out[field] = None
+
+    # 순이익률: net income/revenue. +100% 초과·-1000% 미만은 사실상 데이터 오류.
+    _reject("profitMargin", -10.0, 1.0, "비현실적")
+    # ROE: 적자/자본잠식 기업에서 폭주값. ±1000%(=±10.0) 밖이면 신뢰 불가.
+    _reject("roe", -10.0, 10.0, "비현실적")
+    # 매출성장률(YoY): 하한 -100%(-1.0)는 매출 0 수렴이 한계, 그 아래는 불가능.
+    # 상한 +5000%(50.0)는 사실상 데이터 오류(기저효과여도 과도).
+    _reject("revenueGrowth", -1.0, 50.0, "비현실적")
+    # 배당수익률: 소수값(0.025=2.5%). yfinance가 가끔 퍼센트형(2.5)을 섞어 내보냄.
+    # 1.0(=100%) 초과는 단위 혼동/오류 → 신뢰 불가.
+    _reject("dividendYield", 0.0, 1.0, "단위 혼동/비현실적")
+    # 베타: 정상 범위는 대략 -3~3. ±10 밖이면 데이터 오류.
+    _reject("beta", -10.0, 10.0, "비현실적")
+
+    # 애널리스트 컨센서스 정합성 — 의견 수가 0/없음이면 목표가는 신뢰 불가.
+    na = out.get("numAnalysts")
+    if not na:  # None 또는 0
+        for f in ("targetMean", "targetHigh", "targetLow"):
+            if out.get(f) is not None:
+                out[f] = None
+        if out.get("recommendation") is not None:
+            data_warnings.append("애널리스트 의견 0명 → 목표가·추천 신뢰 불가, 미제공 처리")
+            out["recommendation"] = None
+
     if data_warnings:
         out["data_warnings"] = data_warnings
 
