@@ -1,7 +1,16 @@
 # Connect AI — 미국 주식 투자 AI 진행 기록
 
 > 이 파일은 세션 간 컨텍스트 보존용. 새 세션 시작 시 이 파일을 먼저 읽을 것.
-> 마지막 업데이트: 2026-06-03
+> 마지막 업데이트: 2026-06-04
+
+---
+
+## 시스템의 목적 (사용자 핵심 용도) ⭐
+
+1. **종목 발굴 → 추천**: 새 기회 찾기. (screen.py 로 watchlist 랭킹 → 심층분석 검증)
+2. **보유 종목 관리 → 매매전략 수행**: 가진 종목 운용. (portfolio.py 로 손익·손절·
+   목표·액션 추적 → 리스크규칙으로 매매 실행)
+모든 설계·우선순위는 이 두 용도를 우선한다.
 
 ---
 
@@ -59,15 +68,22 @@ VS Code 확장(connect-ai-lab.vsix)을 미국 주식 투자 분석 AI로 개조.
 
 ---
 
-## 현재 버전: 2.92.0+
+## 현재 버전: 2.94.0
 
-### ⏳ 집 PC에서 테스트 대기 중 (v2.92.0+ 일괄)
-다음 것들은 코드/지식은 완성·푸시됐고, 집 PC에서 update.bat 후 테스트만 남음:
-- macro.py (매크로·센티먼트 분석가)
-- backtest.py (퀀트엔지니어)
-- 포트폴리오매니저 실적일 연결
-- 지식 3종 추가: 거시경제_해석법, 시장심리_지표, 섹터별_특징
-→ 테스트 체크리스트는 이 파일 맨 아래 "## 다음 세션 테스트 체크리스트" 참고.
+### 로컬 도구 6종 (전부 워크스페이스에 복사됨 via update.bat)
+- stock.py  — 시세·밸류·재무·목표가·실적일 + hist(지표) + risk(포지션사이징)
+- macro.py  — VIX·금리·달러·환율·지수·유가·금 + regime
+- backtest.py — MA크로스/RSI 전략 백테스트
+- sec.py    — SEC EDGAR 공식 공시·재무
+- portfolio.py — 보유종목 손익·손절·목표·액션 (portfolio.csv)
+- screen.py — 종목발굴 랭킹 value/momentum (watchlist.txt)
+
+### ⏳ 집 PC에서 테스트 대기 중 (v2.92.0 ~ 2.94.0 일괄)
+코드/지식 완성·푸시됨, update.bat 후 테스트만 남음:
+- macro.py / backtest.py / sec.py / portfolio.py / screen.py
+- 에이전트 9종 페르소나 + 스킬 9종 (_company/_agents/{id}/skills/)
+- 지식 추가분: 거시경제·시장심리·섹터별·SEC공시·매매전략·종목발굴 + 템플릿 2종
+→ 테스트 체크리스트는 맨 아래 참고.
 
 ### 검증 완료 (집 PC 테스트 통과)
 - ✅ `py stock.py IONQ` → 실시간 가격·밸류에이션 정확 (beta·roe·목표가·실적일 포함)
@@ -149,8 +165,9 @@ backtest.py: MA크로스/RSI 전략, 룩어헤드 없음. 퀀트엔지니어 연
 2. 수치는 stock.py 결과만 인용, 절대 지어내지 않음
 3. 9B 모델 한계 고려 — 복잡한 런타임 워크플로우보다 페르소나에 규칙 직접 주입
 4. 면책고지 필수 (투자 책임은 사용자 본인)
-5. 로컬 도구(stock/macro/backtest.py) 출력에 이모지·특수문자 금지, UTF-8 강제
+5. 로컬 도구(.py 6종) 출력에 이모지·특수문자 금지, UTF-8 강제
 6. 계산은 Python에서 끝내고 모델은 결과를 "읽어주기"만
+7. 사용자 데이터(portfolio.csv·watchlist.txt)는 update.bat이 덮어쓰지 않음(없을때만 시드)
 
 ---
 
@@ -166,8 +183,11 @@ py stock.py IONQ             → earningsDate·dividendYield 포함 확인
 py sec.py AAPL               → 최근 공시 목록 + 원문 링크
 py sec.py AAPL financials    → XBRL 공식 재무 (매출·순이익·자산·EPS)
 py sec.py IONQ 10-Q          → 분기보고서만 필터
+py portfolio.py              → 보유종목 손익·액션 (portfolio.csv 시드됨)
+py screen.py value           → watchlist 저평가 랭킹
+py screen.py momentum        → watchlist 성장모멘텀 랭킹
 ```
-⚠️ sec.py는 SEC 서버 호출 — 첫 실행 시 살짝 느릴 수 있음(company_tickers.json 다운로드).
+⚠️ sec.py·screen.py는 외부 서버 호출 — 첫 실행/다수 티커 시 느릴 수 있음.
 
 그 다음 VSIX 재설치 → Reload → 새 채팅에서 에이전트별 테스트:
 - [ ] 매크로분석가: "지금 시장 거시 환경 어때?" → macro.py 실행, VIX/금리/regime 인용
@@ -177,7 +197,13 @@ py sec.py IONQ 10-Q          → 분기보고서만 필터
 - [ ] 펀더멘털분석가: "IONQ 섹터 특성 반영해서 밸류 봐줘" → 양자=P/S 잣대
 - [ ] 리서처: "AAPL 최근 공시 뭐 있어?" → sec.py 공식 공시 목록+링크
 - [ ] 리서처: "IONQ 공식 재무 보여줘" → sec.py financials (매출·순이익 출처:SEC)
+- [ ] ⭐보유관리: "내 포트폴리오 점검해줘" → portfolio.py, 손익·action·alerts
+- [ ] ⭐발굴: "저평가 종목 발굴해줘" → screen.py value 랭킹 → 상위 후보 심층분석 안내
 - [ ] 지식 인용: 각 응답에 📚 출처 표기 확인
+
+### 두 핵심 용도 통합 시나리오 (최종 목표)
+- 발굴: "관심종목 중 살 만한 거 추천" → screen.py 랭킹 → 상위 1~2개 기술+펀더멘털+리스크 분석 → 진입가·손절·목표·비중 제시
+- 보유관리: "내 종목들 어때, 뭐 팔까" → portfolio.py → action 종목 우선 → 각 종목 매매전략_실행법 적용
 
 문제 발견 시 패턴: 도구 단독은 정상인데 AI가 못 쓰면 → 페르소나/system.md 지시 강화.
 도구 자체가 틀리면 → .py 수정. (9B는 명령 하나만 도는 경향 → 핵심은 한 명령에 몰기.)

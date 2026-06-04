@@ -27,8 +27,22 @@ git pull + 도구 복사 + 컴파일 + VSIX 패키징까지 자동.
 | "이 전략 백테스트" | 퀀트엔지니어 | backtest.py |
 | "다음 실적 언제", "일정 정리" | 포트폴리오매니저 | stock.py |
 | "리포트로 정리해줘" | 리포트작가 | (종합) |
-| "최신 뉴스", "공시 찾아줘" | 리서처 | 웹 검색 |
+| "최신 뉴스", "공시 찾아줘" | 리서처 | sec.py + 웹 검색 |
+| "내 포트폴리오 점검", "뭐 팔까" | 포트폴리오매니저 | portfolio.py |
+| "저평가 종목 발굴", "살 만한 거" | 리서처 | screen.py |
 | "살까 말까 종합 판단" | CIO (👔 Solo Mode) | 전체 연계 |
+
+## 두 가지 핵심 용도
+
+### ① 종목 발굴 → 추천
+1. `watchlist.txt`에 관심 후보 티커를 모은다 (한 줄에 하나).
+2. "저평가 종목 발굴해줘" / "성장주 찾아줘" → screen.py가 객관 지표로 랭킹.
+3. 상위 후보를 기술+펀더멘털+리스크로 심층 검증 → 진입가·손절·목표·비중.
+
+### ② 보유 종목 관리 → 매매
+1. `portfolio.csv`에 보유 종목 기록 (ticker,shares,avg_cost,stop,target).
+2. "내 포트폴리오 점검해줘" → portfolio.py가 손익·손절거리·목표거리·액션.
+3. action 종목(손절임박·목표도달) 우선 → 매매전략_실행법대로 실행.
 
 ## 4. 데이터 도구 직접 사용 (터미널)
 
@@ -41,7 +55,17 @@ py macro.py                 # 거시 스냅샷 (VIX·금리·달러·지수…)
 py macro.py ^VIX            # 특정 지표 하나
 py backtest.py AAPL         # MA크로스 백테스트
 py backtest.py AAPL rsi     # RSI 전략 백테스트
+py sec.py AAPL              # SEC 공시 목록 + 원문 링크
+py sec.py AAPL financials   # SEC 공식 재무 (매출·순이익·자산·EPS)
+py portfolio.py            # 보유종목 손익·손절·목표·매매액션
+py screen.py value         # 관심종목 저평가 랭킹 (watchlist.txt)
+py screen.py momentum      # 관심종목 성장모멘텀 랭킹
 ```
+
+설정 파일 (워크스페이스):
+- `portfolio.csv` — 보유 종목 (ticker,shares,avg_cost,stop,target)
+- `watchlist.txt` — 발굴 후보 (한 줄에 티커 하나)
+- 둘 다 update.bat이 처음에만 예시로 시드 → 이후 직접 편집(덮어쓰지 않음)
 
 ## 5. 지식(Second Brain) 운용
 
