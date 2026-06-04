@@ -16,6 +16,9 @@ copy /Y C:\project_list\connect-ai\screen.py C:\project_list\NA-stock-ai\screen.
 echo [3/4] Deploying agent skills to brain company folder...
 xcopy /E /I /Y "C:\project_list\connect-ai\agent-skills" "C:\project_list\ai_agent_antigravity\_company\_agents"
 
+echo [3a/4] Deploying investment knowledge + templates to brain wiki...
+xcopy /E /I /Y "C:\project_list\connect-ai\knowledge-pack\10_Wiki" "C:\project_list\ai_agent_antigravity\10_Wiki"
+
 echo Seeding portfolio.csv / watchlist.txt (only if missing - your data is preserved)...
 if not exist "C:\project_list\NA-stock-ai\portfolio.csv" copy /Y "C:\project_list\connect-ai\portfolio.csv.example" "C:\project_list\NA-stock-ai\portfolio.csv"
 if not exist "C:\project_list\NA-stock-ai\watchlist.txt" copy /Y "C:\project_list\connect-ai\watchlist.txt.example" "C:\project_list\NA-stock-ai\watchlist.txt"
