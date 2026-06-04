@@ -657,6 +657,66 @@ function runCommandCaptured(
     });
 }
 
+/* ============================================================
+   결정적 투자 도구 라우팅 (길 B · v3.0)
+   9B가 자연어에서 명령(.py)을 불안정하게 고르는 문제를 해결.
+   사용자 질문의 키워드를 감지해 정확한 명령 인자를 반환한다.
+   - 흔한 표현은 여기서 확정(포장도로), 못 잡으면 null → 9B 판단으로 폴백.
+   - 반환값은 "backtest.py IONQ" 같은 인자 문자열(앞에 python 실행기는 호출부에서 붙임).
+   ============================================================ */
+function _detectInvestmentCommand(prompt: string): string | null {
+    const p = (prompt || '').trim();
+    if (!p) return null;
+    const lp = p.toLowerCase();
+
+    // 티커 추출: 대문자 1~5글자 토큰 중 흔한 비-티커 약어 제외
+    const STOP = new Set(['RSI','MACD','MA','ATR','CEO','CIO','VIX','PER','PBR','PSR','ROE','EPS','SEC',
+        'ETF','IPO','FOMC','GDP','CPI','AI','USD','KRW','DXY','WTI','US','OK','TV','YOY','QOQ','RR','IT','EV','PS']);
+    let ticker: string | null = null;
+    const mm = p.match(/\b[A-Z]{1,5}\b/g);
+    if (mm) { for (const c of mm) { if (!STOP.has(c)) { ticker = c; break; } } }
+
+    // 의도 키워드
+    const hasBacktest = /백테스트|backtest|골든\s*크로스|골든크로스|데드\s*크로스|데드크로스|전략\s*검증|전략검증|수익률\s*시뮬|시뮬레이션|ma\s*크로스|크로스\s*전략|과거.*통했|과거.*수익률/.test(lp);
+    const wantsRsi = /rsi/.test(lp);
+    const hasPortfolio = /포트폴리오\s*점검|내\s*포트|보유\s*종목|내\s*종목|뭐\s*팔|뭘\s*팔|손익\s*점검|보유\s*현황|포트폴리오\s*현황/.test(lp);
+    const hasScreen = /종목\s*발굴|발굴해|발굴\s*해|스크리닝|스크린|저평가\s*종목|살\s*만한|살만한|종목\s*추천|후보\s*찾|종목\s*골라/.test(lp);
+    const hasMacro = /거시|매크로|macro|시황|시장\s*환경|시장환경|증시\s*환경|공포지수|vix|위험\s*회피|시장\s*심리|시장심리|달러인덱스|dxy/.test(lp);
+    const hasRisk = /손절|리스크\s*관리|포지션\s*사이징|비중\s*얼마|얼마나\s*사|몇\s*주|손실\s*한도|스탑로스|스톱로스/.test(lp);
+    const hasChart = /차트|기술적|기술\s*분석|기술분석|매매\s*타이밍|이동평균|macd|봉\s*분석|추세\s*분석/.test(lp);
+    const hasSec = /공시|sec\b|10-?k|10-?q|사업보고서|분기보고서|edgar/.test(lp);
+    const hasAnalyst = /월가|애널리스트|analyst|등급\s*변경|목표가|투자의견|컨센서스/.test(lp);
+    const hasFundamental = /밸류에이션|valuation|적정주가|재무\s*분석|펀더멘털|per\s*적정|저평가|고평가/.test(lp);
+
+    // 발굴 테마 → suggest 모드
+    const THEMES: Record<string,string> = {
+        '양자':'quantum','퀀텀':'quantum','quantum':'quantum','ai':'ai','인공지능':'ai',
+        '반도체':'semiconductor','semiconductor':'semiconductor','전기차':'ev','바이오':'biotech','제약':'biotech',
+        '방산':'defense','국방':'defense','클라우드':'cloud','cloud':'cloud','핀테크':'fintech','fintech':'fintech',
+        '에너지':'energy','energy':'energy','신재생':'clean','태양광':'clean','헬스케어':'healthcare',
+        '소비재':'consumer','크립토':'crypto','암호화폐':'crypto','코인':'crypto','우주':'space','로봇':'robotics',
+    };
+
+    // 우선순위 분기
+    if (hasBacktest && ticker) return wantsRsi ? `backtest.py ${ticker} rsi` : `backtest.py ${ticker}`;
+    if (hasPortfolio) return `portfolio.py`;
+    if (hasScreen) {
+        const mode = /모멘텀|momentum|성장/.test(lp) ? 'momentum' : 'value';
+        for (const [k, v] of Object.entries(THEMES)) {
+            if (lp.includes(k)) return `screen.py suggest ${v} ${mode}`;
+        }
+        return `screen.py ${mode}`;
+    }
+    // 거시: 티커 없거나, 명백한 시장-전체 용어일 때만 (티커+금리 같은 종목질문 오발 방지)
+    if (hasMacro && (!ticker || /거시|매크로|macro|시황|시장\s*환경|시장환경|vix|공포지수/.test(lp))) return `macro.py`;
+    if (hasRisk && ticker) return `stock.py ${ticker} risk`;
+    if (hasChart && ticker) return `stock.py ${ticker} hist`;
+    if (hasSec && ticker) return `sec.py ${ticker}`;
+    if ((hasAnalyst || hasFundamental) && ticker) return `stock.py ${ticker}`;
+
+    return null;  // 못 잡으면 9B 판단으로 폴백
+}
+
 // ============================================================
 // Connect AI — Full Agentic Local AI for VS Code
 // 100% Offline · File Create · File Edit · Terminal · Multi-file Context
@@ -18918,6 +18978,27 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             // 2.5 Inject Second Brain Knowledge (ON/OFF 토글 반영)
             const brainCtx = this._brainEnabled ? this._getSecondBrainContext() : '';
 
+            // 2.7 결정적 투자 도구 라우팅 (길 B) — 키워드 감지 → 명령 사전 실행 → 결과 주입.
+            //     9B가 명령을 직접 고르다 틀리거나 followUp이 멈추던 문제를 우회.
+            //     데이터를 미리 넣어주므로 모델은 한 번의 호출로 분석만 하면 됨.
+            let forcedToolContext = '';
+            let forcedToolNotice = '';
+            const forcedArgs = _detectInvestmentCommand(prompt);
+            if (forcedArgs) {
+                const fullCmd = `${_pythonCmd()} ${forcedArgs}`;
+                const toolRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+                    || (() => { try { const d = getCompanyDir(); return d && fs.existsSync(d) ? d : undefined; } catch { return undefined; } })()
+                    || process.cwd();
+                try {
+                    const r = await runCommandCaptured(fullCmd, toolRoot, () => { /* silent */ }, 5 * 60 * 1000);
+                    const outStr = (r.output || '').toString().slice(0, 8000);
+                    forcedToolContext = `\n\n[자동 실행된 도구 결과 — 반드시 이 실데이터(JSON)만 인용하라. 새 <run_command>를 출력하지 말고 아래 숫자로 바로 분석할 것. 값이 null이거나 error면 "데이터 확인 실패"라고 솔직히 답하고 지어내지 말 것]\n명령: ${fullCmd}\n출력:\n${outStr}`;
+                    forcedToolNotice = `\n> 🖥️ **[자동 실행]** \`${fullCmd}\`\n\n`;
+                } catch (e: any) {
+                    forcedToolContext = `\n\n[자동 도구 실행 실패: ${e?.message || e}. "데이터 확인 실패"라고 솔직히 답하고 수치를 지어내지 말 것.]`;
+                }
+            }
+
             // 3. Push user message
             this._chatHistory.push({
                 role: 'user',
@@ -18939,7 +19020,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                     : '';
                 reqMessages[0] = {
                     role: 'system',
-                    content: `${this._systemPrompt}${this._getProjectMemory()}\n\n[BACKGROUND CONTEXT - DO NOT EXPLAIN THIS TO THE USER UNLESS ASKED]\n${contextBlock}\n${workspaceCtx}\n${brainCtx}${internetCtx}`
+                    content: `${this._systemPrompt}${this._getProjectMemory()}\n\n[BACKGROUND CONTEXT - DO NOT EXPLAIN THIS TO THE USER UNLESS ASKED]\n${contextBlock}\n${workspaceCtx}\n${brainCtx}${internetCtx}${forcedToolContext}`
                 };
             }
 
@@ -18962,6 +19043,11 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
 
             // 스트리밍: 웹뷰에 'streamStart' 로 빈 메시지 생성 후 'streamChunk'로 실시간 업데이트
             this._view.webview.postMessage({ type: 'streamStart' });
+            // 길 B — 자동 실행한 명령을 사용자에게 알림(분석 위에 표시)
+            if (forcedToolNotice) {
+                this._view.webview.postMessage({ type: 'streamChunk', value: forcedToolNotice });
+                aiMessage += forcedToolNotice;
+            }
             this._lastPrompt = prompt;
             this._lastModel = modelName;
             this._abortController = new AbortController();
