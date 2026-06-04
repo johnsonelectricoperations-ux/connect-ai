@@ -19,6 +19,60 @@ try:
 except Exception:
     pass
 
+def analyst_extras(t):
+    """등급변경 이력 + stale 플래그 + 의견추세를 dict로 반환.
+    analyst 모드와 기본 모드 양쪽에서 재사용 (9B가 명령 하나만 써도 데이터 확보)."""
+    out = {"recent_rating_changes": [], "ratings_latest_date": None,
+           "ratings_days_old": None, "ratings_stale": None,
+           "recommendation_trend": []}
+    # 최근 등급 변경 이력
+    latest_change_date = None
+    try:
+        ud = t.upgrades_downgrades
+        if ud is not None and not ud.empty:
+            ud = ud.sort_index(ascending=False).head(12)
+            for idx, row in ud.iterrows():
+                d = str(idx.date()) if hasattr(idx, "date") else str(idx)
+                if latest_change_date is None:
+                    latest_change_date = d
+                out["recent_rating_changes"].append({
+                    "date": d,
+                    "firm": str(row.get("Firm", "")),
+                    "action": str(row.get("Action", "")),
+                    "from": str(row.get("FromGrade", "")),
+                    "to": str(row.get("ToGrade", "")),
+                })
+    except Exception:
+        pass
+    # 오래됨(>180일) 플래그
+    if latest_change_date:
+        try:
+            import datetime as _dt
+            ld = _dt.date.fromisoformat(latest_change_date)
+            days_old = (_dt.date.today() - ld).days
+            out["ratings_latest_date"] = latest_change_date
+            out["ratings_days_old"] = days_old
+            out["ratings_stale"] = days_old > 180
+        except Exception:
+            pass
+    # 추천 의견 분포 추세
+    try:
+        rec = t.recommendations
+        if rec is not None and not rec.empty:
+            for _, row in rec.iterrows():
+                out["recommendation_trend"].append({
+                    "period": str(row.get("period", "")),
+                    "strongBuy": int(row.get("strongBuy", 0)),
+                    "buy": int(row.get("buy", 0)),
+                    "hold": int(row.get("hold", 0)),
+                    "sell": int(row.get("sell", 0)),
+                    "strongSell": int(row.get("strongSell", 0)),
+                })
+    except Exception:
+        pass
+    return out
+
+
 def main():
     if len(sys.argv) < 2:
         print(json.dumps({"error": "ticker 인자가 필요합니다. 예: py stock.py AAPL"}))
@@ -160,61 +214,8 @@ def main():
             },
         }
 
-        # 최근 등급 변경 이력 (누가/언제/어떻게 바꿨나)
-        recent_actions = []
-        latest_change_date = None
-        try:
-            ud = t.upgrades_downgrades
-            if ud is not None and not ud.empty:
-                ud = ud.sort_index(ascending=False).head(12)
-                for idx, row in ud.iterrows():
-                    d = str(idx.date()) if hasattr(idx, "date") else str(idx)
-                    if latest_change_date is None:
-                        latest_change_date = d
-                    recent_actions.append({
-                        "date": d,
-                        "firm": str(row.get("Firm", "")),
-                        "action": str(row.get("Action", "")),       # up/down/init/main/reit
-                        "from": str(row.get("FromGrade", "")),
-                        "to": str(row.get("ToGrade", "")),
-                    })
-        except Exception:
-            pass
-        out["recent_rating_changes"] = recent_actions
-
-        # 등급변경 이력이 오래됐는지(>180일) 플래그 — 환각 방지
-        # yfinance 무료 데이터는 종목별로 등급변경 로그가 갱신 안 되고 멈춰 있을 수 있음.
-        ratings_stale = None
-        days_old = None
-        if latest_change_date:
-            try:
-                import datetime as _dt
-                ld = _dt.date.fromisoformat(latest_change_date)
-                days_old = (_dt.date.today() - ld).days
-                ratings_stale = days_old > 180
-            except Exception:
-                pass
-        out["ratings_latest_date"] = latest_change_date
-        out["ratings_days_old"] = days_old
-        out["ratings_stale"] = ratings_stale
-
-        # 추천 의견 분포 추세 (월별 strongBuy/buy/hold/sell 집계)
-        trend = []
-        try:
-            rec = t.recommendations
-            if rec is not None and not rec.empty:
-                for _, row in rec.iterrows():
-                    trend.append({
-                        "period": str(row.get("period", "")),       # 0m/-1m/-2m/-3m
-                        "strongBuy": int(row.get("strongBuy", 0)),
-                        "buy": int(row.get("buy", 0)),
-                        "hold": int(row.get("hold", 0)),
-                        "sell": int(row.get("sell", 0)),
-                        "strongSell": int(row.get("strongSell", 0)),
-                    })
-        except Exception:
-            pass
-        out["recommendation_trend"] = trend
+        # 등급변경 이력·stale·의견추세 (헬퍼 재사용)
+        out.update(analyst_extras(t))
 
         out["note"] = ("recent_rating_changes=최근 등급변경(firm=증권사, action=up/down/init/main, from/to=등급). "
                        "ratings_stale=true면 등급변경 이력이 180일 이상 오래됨(ratings_days_old=경과일) → "
@@ -393,6 +394,16 @@ def main():
     if out["price"] is None:
         print(json.dumps({"error": f"{ticker} 가격 조회 실패 — 티커 확인 또는 네트워크 점검."}, ensure_ascii=False))
         return
+
+    # 애널리스트 등급변경 이력·stale·의견추세를 기본 출력에도 병합
+    # (9B 모델이 analyst 서브명령을 안 쓰고 기본 명령만 써도 데이터 확보되도록)
+    out.update(analyst_extras(t))
+    out["note"] = ("targetMean/recommendation/numAnalysts=현재 애널리스트 컨센서스. "
+                   "recommendation_trend=월별 의견분포(period 0m=현재,-1m=한달전)로 개선/악화 추세 판단. "
+                   "recent_rating_changes=증권사별 등급변경 이력. "
+                   "ratings_stale=true면 등급변경이 ratings_days_old일 전이라 오래됨 → '최근 변경'이라 하지 말고 "
+                   "'X일 전 이력, 신뢰도 낮음'으로 명시(단 recommendation_trend은 최신이라 신뢰 가능). "
+                   "roe/profitMargin/revenueGrowth/dividendYield는 소수값 → ×100 해서 %로. null이면 '데이터 미제공', 지어내지 말 것.")
     print(json.dumps(out, ensure_ascii=False))
 
 
