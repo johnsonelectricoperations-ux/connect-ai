@@ -4,6 +4,8 @@
 # 사용법:
 #   py stock.py IONQ          → 현재가 + 밸류에이션(시총·PER·P/S·EPS·52주) JSON
 #   py stock.py IONQ hist     → 최근 60거래일 일봉(날짜,종가) — 기술적 분석용
+#   py stock.py IONQ risk     → 손절·포지션 사이징 (리스크 관리용)
+#   py stock.py IONQ analyst  → 애널리스트 등급변경 이력 + 추천 의견 추세
 #
 # 출력은 항상 JSON 한 줄. 실패 시 {"error": "..."} 를 출력하므로,
 # AI는 error가 오면 숫자를 지어내지 말고 "데이터 확인 실패"라고 답해야 한다.
@@ -130,6 +132,75 @@ def main():
             print(json.dumps({"ticker": ticker, "summary": summary, "history": rows}))
         except Exception as e:
             print(json.dumps({"error": f"history 조회 실패: {e}"}, ensure_ascii=False))
+        return
+
+    # analyst 모드: 애널리스트 등급 변경 이력 + 추천 의견 추세
+    # 사용법: py stock.py TICKER analyst
+    if mode == "analyst":
+        info = {}
+        try:
+            info = t.info or {}
+        except Exception:
+            info = {}
+        price = fast("lastPrice") or info.get("currentPrice")
+
+        out = {
+            "ticker": ticker,
+            "name": info.get("shortName") or info.get("longName"),
+            "price": price,
+            # 현재 컨센서스 (요약)
+            "consensus": {
+                "recommendation": info.get("recommendationKey"),
+                "targetMean": info.get("targetMeanPrice"),
+                "targetHigh": info.get("targetHighPrice"),
+                "targetLow": info.get("targetLowPrice"),
+                "numAnalysts": info.get("numberOfAnalystOpinions"),
+                "upside_pct": round((info.get("targetMeanPrice")/price - 1)*100, 1)
+                              if price and info.get("targetMeanPrice") else None,
+            },
+        }
+
+        # 최근 등급 변경 이력 (누가/언제/어떻게 바꿨나)
+        recent_actions = []
+        try:
+            ud = t.upgrades_downgrades
+            if ud is not None and not ud.empty:
+                ud = ud.sort_index(ascending=False).head(12)
+                for idx, row in ud.iterrows():
+                    recent_actions.append({
+                        "date": str(idx.date()) if hasattr(idx, "date") else str(idx),
+                        "firm": str(row.get("Firm", "")),
+                        "action": str(row.get("Action", "")),       # up/down/init/main/reit
+                        "from": str(row.get("FromGrade", "")),
+                        "to": str(row.get("ToGrade", "")),
+                    })
+        except Exception:
+            pass
+        out["recent_rating_changes"] = recent_actions
+
+        # 추천 의견 분포 추세 (월별 strongBuy/buy/hold/sell 집계)
+        trend = []
+        try:
+            rec = t.recommendations
+            if rec is not None and not rec.empty:
+                for _, row in rec.iterrows():
+                    trend.append({
+                        "period": str(row.get("period", "")),       # 0m/-1m/-2m/-3m
+                        "strongBuy": int(row.get("strongBuy", 0)),
+                        "buy": int(row.get("buy", 0)),
+                        "hold": int(row.get("hold", 0)),
+                        "sell": int(row.get("sell", 0)),
+                        "strongSell": int(row.get("strongSell", 0)),
+                    })
+        except Exception:
+            pass
+        out["recommendation_trend"] = trend
+
+        out["note"] = ("recent_rating_changes=최근 등급변경(firm=증권사, action=up/down/init/main, from/to=등급). "
+                       "recommendation_trend=월별 의견분포(period 0m=현재,-1m=한달전...). "
+                       "consensus.upside_pct=평균목표가 대비 상승여력%. "
+                       "데이터 없으면 빈 배열 — 지어내지 말 것. 컨센서스는 참고지표일 뿐 매수신호 아님.")
+        print(json.dumps(out, ensure_ascii=False))
         return
 
     # risk 모드: 리스크 관리용 데이터 + 손절가·포지션 사이징 사전계산

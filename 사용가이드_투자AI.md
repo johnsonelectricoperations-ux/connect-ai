@@ -24,6 +24,7 @@ git pull + 도구 복사 + 컴파일 + VSIX 패키징까지 자동.
 | "손절 어디", "얼마나 사", "리스크" | 리스크매니저 | stock.py risk |
 | "시장 거시 환경", "금리·달러 영향" | 매크로분석가 | macro.py |
 | "지금 공포야 탐욕이야" | 센티먼트분석가 | macro.py ^VIX |
+| "월가 의견", "애널리스트 등급", "목표가 누가 올렸어" | 센티먼트분석가 | stock.py analyst |
 | "이 전략 백테스트" | 퀀트엔지니어 | backtest.py |
 | "다음 실적 언제", "일정 정리" | 포트폴리오매니저 | stock.py |
 | "리포트로 정리해줘" | 리포트작가 | (종합) |
@@ -51,6 +52,7 @@ py stock.py IONQ            # 현재가·밸류에이션·재무·목표가·실
 py stock.py IONQ hist       # 차트지표 (RSI·MA·MACD·ATR)
 py stock.py IONQ risk       # 손절·포지션 사이징 (기본 $10,000)
 py stock.py IONQ risk 50000 1   # 총자산 $50,000, 위험 1%
+py stock.py IONQ analyst    # 애널리스트 등급변경·의견추세·목표가
 py macro.py                 # 거시 스냅샷 (VIX·금리·달러·지수…)
 py macro.py ^VIX            # 특정 지표 하나
 py backtest.py AAPL         # MA크로스 백테스트
