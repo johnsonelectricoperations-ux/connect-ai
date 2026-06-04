@@ -69,7 +69,7 @@ VS Code 확장(connect-ai-lab.vsix)을 미국 주식 투자 분석 AI로 개조.
 
 ---
 
-## 현재 버전: 3.0.8
+## 현재 버전: 3.0.9
 
 ### v3.x 변경사항 — 결정적 투자 도구 라우팅 (forcedArgs 시스템)
 
@@ -153,6 +153,16 @@ VS Code 확장(connect-ai-lab.vsix)을 미국 주식 투자 분석 AI로 개조.
   없으면(`면책|투자 판단|책임은 본인|정보·교육|투자자문` 미감지) 표준 면책을 자동 덧붙임.
   - 이미 면책이 있으면 중복 추가 안 함(7/7 단위테스트로 검증).
   - screen.py fields_only 가드레일은 v3.0.2부터 적용 중(정성정보 날조 차단).
+
+**v3.0.9 — 보유관리 통합 흐름 (Step B)**
+- **목표(핵심 용도 #2)**: "내 종목들 어때, 뭐 팔까" → portfolio.py → action 종목 우선 매매전략.
+- **구현** (extension.ts forcedArgs 블록): `forcedArgs === 'portfolio.py'` 전용 분기.
+  - portfolio.py 실행 → 출력 JSON `summary.alerts`에서 action 종목(hold 외) 추출.
+  - action 종목(최대 3개)에 `stock.py TICKER risk` 추가 프리페치 → 손절/포지션 데이터 결합.
+  - 모델 지침: STOP_BREACHED=손절검토, TARGET_HIT=익절검토, near_*=관찰. 액션종목 우선
+    "어디서·왜 팔지" 구체 제시. 액션 없으면 "매도 시그널 없음 — 보유 유지".
+  - 단일 `[자동 실행] 포트폴리오 점검 + 액션종목 ... 손절·포지션` notice.
+- alerts 파싱 단위테스트 통과(3개 캡·빈/오류 JSON·중복 제거). **집 PC 라이브 검증 대기.**
 
 ### 로컬 도구 6종 (전부 워크스페이스에 복사됨 via update.bat)
 - `stock.py`  — 시세·밸류·재무·목표가·실적일 + hist(지표) + risk(포지션사이징) + analyst

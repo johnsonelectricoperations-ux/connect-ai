@@ -19050,6 +19050,47 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                 forcedFullCmd = `${py} stock.py ${tk} (+hist +risk) · ${py} macro.py`;
                 forcedToolContext = `\n\n[종합 분석 모드 — 너는 CIO다. 아래는 ${tk}에 대해 자동 실행한 도구들의 실데이터(JSON)다. 반드시 이 숫자만 인용하라. 새 <run_command>를 출력하지 말고(명령줄을 본문에 다시 적지도 말 것) 아래 데이터로 바로 통합 분석할 것.\n🈲 언어 규칙: 반드시 한국어로만 작성하라. 중국어·한자·간체자(经营·现金流·状态·减仓 등)를 단 한 글자도 섞지 마라. 전문용어는 영문 약어(PER·RSI·MACD·ATR·FCF) 또는 한국어로 쓴다.\n🚫 환각 절대 금지: 아래 JSON에 있는 필드·숫자만 사용하라. JSON에 없는 항목(파트너십·매출액·시장 점유율·기술 방식 등)을 사실처럼 지어내지 마라. 값이 null/error거나 data_warnings에 걸린 필드는 해당 항목만 "데이터 미제공"으로 표기하고 추정하지 마라.\n📋 출력 구조(이 순서대로): ① 한 줄 결론([매수 관심/관망/회피] + 핵심 이유) ② 펀더멘털(밸류에이션·재무) ③ 기술적(추세·RSI·MA·MACD) ④ 리스크(손절가·권장 비중·R:R) ⑤ 거시 환경이 ${tk}에 주는 영향 ⑥ 종합 의견. 끝에 면책 한 줄. 각 섹션은 해당 도구 데이터에만 근거.\n\n${forcedToolOutput}]`;
                 forcedToolNotice = `\n> 🖥️ **[자동 실행]** 종합 분석 — \`${tk}\` 펀더멘털·기술·리스크 + 거시${ranLabels.length < steps.length ? ` (일부 실패)` : ''}\n\n`;
+            } else if (forcedArgs === 'portfolio.py') {
+                /* v3.0.9 — 보유관리 통합(Step B). portfolio.py 실행 후 action 플래그가
+                   붙은 종목(손절임박·목표도달 등)은 stock.py TICKER risk를 추가 프리페치해
+                   매매전략까지 한 흐름으로 잇는다. 액션 종목 없으면 단순 점검으로 동작. */
+                const py = _pythonCmd();
+                const toolRoot = _toolRoot();
+                let pfOut = '';
+                try {
+                    const r = await runCommandCaptured(`${py} portfolio.py`, toolRoot, () => { /* silent */ }, 5 * 60 * 1000);
+                    pfOut = (r.output || '').toString().slice(0, 8000);
+                } catch (e: any) {
+                    forcedToolContext = `\n\n[자동 도구 실행 실패: ${e?.message || e}. "데이터 확인 실패"라고 솔직히 답하고 수치를 지어내지 말 것.]`;
+                }
+                if (pfOut) {
+                    const actionTickers: string[] = [];
+                    try {
+                        const pj = JSON.parse(pfOut);
+                        for (const a of (pj?.summary?.alerts || [])) {
+                            const tk = String(a).split(':')[0]?.trim().toUpperCase();
+                            if (tk && /^[A-Z]{1,5}$/.test(tk) && !actionTickers.includes(tk)) actionTickers.push(tk);
+                        }
+                    } catch { /* 파싱 실패 시 액션 종목 없이 진행 */ }
+                    const detailTickers = actionTickers.slice(0, 3);   // 컨텍스트 보호: 최대 3개
+                    const extras: string[] = [];
+                    for (const tk of detailTickers) {
+                        if (this._abortController?.signal.aborted) break;
+                        try {
+                            const r2 = await runCommandCaptured(`${py} stock.py ${tk} risk`, toolRoot, () => { /* silent */ }, 5 * 60 * 1000);
+                            extras.push(`### [${tk} 손절·포지션] ${py} stock.py ${tk} risk\n${(r2.output || '').toString().slice(0, 3000)}`);
+                        } catch (e: any) {
+                            extras.push(`### [${tk}] 리스크 조회 실패: ${e?.message || e} — 추정하지 말 것`);
+                        }
+                    }
+                    forcedToolOutput = `### [보유현황] ${py} portfolio.py\n${pfOut}${extras.length ? '\n\n' + extras.join('\n\n') : ''}`;
+                    forcedFullCmd = `${py} portfolio.py`;
+                    const actionNote = detailTickers.length
+                        ? `매매 액션이 필요한 종목(${detailTickers.join('·')})에 손절/포지션 데이터를 추가로 붙였다. 이 종목을 우선 다뤄라: STOP_BREACHED_sell=손절 검토, TARGET_HIT_take_profit=익절 검토, near_stop/target_watch=관찰. 각 종목에 "어디서·왜 팔지(또는 유지)"를 구체적으로 제시하라.`
+                        : `action 플래그(hold 외)가 없으면 "지금 당장 매도/매수 시그널 없음 — 보유 유지"로 안내하라.`;
+                    forcedToolContext = `\n\n[보유 포트폴리오 점검 — 아래 실데이터(JSON)만 인용하라. 새 <run_command>를 출력하지 말 것. ${actionNote}\n🚫 환각 절대 금지: JSON에 있는 숫자만 사용하고, 없는 항목(뉴스·전망·목표가 등)은 지어내지 마라.\n📋 출력 구조: ① 전체 손익 요약(total_unrealized_pl) ② 액션 필요 종목(우선, 각 매매전략) ③ 나머지 보유 한 줄평. 한국어로만 작성.\n\n${forcedToolOutput}]`;
+                    forcedToolNotice = `\n> 🖥️ **[자동 실행]** 포트폴리오 점검${detailTickers.length ? ` + 액션종목 ${detailTickers.join('·')} 손절·포지션` : ''}\n\n`;
+                }
             } else if (forcedArgs) {
                 forcedFullCmd = `${_pythonCmd()} ${forcedArgs}`;
                 const toolRoot = _toolRoot();
