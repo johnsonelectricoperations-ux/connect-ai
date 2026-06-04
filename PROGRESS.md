@@ -125,7 +125,7 @@ backtest.py: MA크로스/RSI 전략, 룩어헤드 없음. 퀀트엔지니어 연
 | 리스크매니저 | 베타(β), ATR, 포지션사이징 | ✅ 완료 | stock.py risk |
 | 매크로분석가 | 금리, VIX, DXY, 환율 | ✅ 완료(테스트대기) | macro.py |
 | 센티먼트분석가 | VIX, 공포탐욕지수 | ✅ VIX 연결(테스트대기) | macro.py ^VIX |
-| 리서처 | 뉴스, SEC 공시 | 🟡 검색만 | SEC Edgar API (선택) |
+| 리서처 | 뉴스, SEC 공시 | ✅ 완료(테스트대기) | sec.py + 웹검색 |
 | 포트폴리오매니저 | 실적발표일, 배당일 | ✅ 완료(테스트대기) | stock.py |
 | 퀀트엔지니어 | 백테스팅 | ✅ 완료(테스트대기) | backtest.py |
 | 리포트작가 | 없음 (결과 종합) | ✅ | - |
@@ -163,7 +163,11 @@ py macro.py ^VIX             → VIX 단일
 py backtest.py AAPL          → MA크로스 전략 vs 단순보유
 py backtest.py AAPL rsi      → RSI 전략
 py stock.py IONQ             → earningsDate·dividendYield 포함 확인
+py sec.py AAPL               → 최근 공시 목록 + 원문 링크
+py sec.py AAPL financials    → XBRL 공식 재무 (매출·순이익·자산·EPS)
+py sec.py IONQ 10-Q          → 분기보고서만 필터
 ```
+⚠️ sec.py는 SEC 서버 호출 — 첫 실행 시 살짝 느릴 수 있음(company_tickers.json 다운로드).
 
 그 다음 VSIX 재설치 → Reload → 새 채팅에서 에이전트별 테스트:
 - [ ] 매크로분석가: "지금 시장 거시 환경 어때?" → macro.py 실행, VIX/금리/regime 인용
@@ -171,6 +175,8 @@ py stock.py IONQ             → earningsDate·dividendYield 포함 확인
 - [ ] 퀀트엔지니어: "AAPL MA크로스 전략 백테스트해줘" → 전략 vs 보유 수익률
 - [ ] 포트폴리오매니저: "IONQ 다음 실적 언제야?" → 2026-08-06 (지어내지 않음)
 - [ ] 펀더멘털분석가: "IONQ 섹터 특성 반영해서 밸류 봐줘" → 양자=P/S 잣대
+- [ ] 리서처: "AAPL 최근 공시 뭐 있어?" → sec.py 공식 공시 목록+링크
+- [ ] 리서처: "IONQ 공식 재무 보여줘" → sec.py financials (매출·순이익 출처:SEC)
 - [ ] 지식 인용: 각 응답에 📚 출처 표기 확인
 
 문제 발견 시 패턴: 도구 단독은 정상인데 AI가 못 쓰면 → 페르소나/system.md 지시 강화.
