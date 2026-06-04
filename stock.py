@@ -419,6 +419,17 @@ def main():
         print(json.dumps({"error": f"{ticker} 가격 조회 실패 — 티커 확인 또는 네트워크 점검."}, ensure_ascii=False))
         return
 
+    # 데이터 품질 검증 — yfinance가 비현실적 값을 내보낼 때 차단 (날조 방지).
+    # 예: IONQ(적자기업)에 profitMargins=1.7488(=174.88%) 같은 명백한 오류값.
+    # 순이익률은 net income/revenue라 +100% 초과는 사실상 데이터 오류.
+    data_warnings = []
+    pm = out.get("profitMargin")
+    if pm is not None and (pm > 1.0 or pm < -10.0):
+        data_warnings.append(f"profitMargin({pm}) 비현실적 → 미제공 처리")
+        out["profitMargin"] = None
+    if data_warnings:
+        out["data_warnings"] = data_warnings
+
     # 애널리스트 등급변경 이력·stale·의견추세를 기본 출력에도 병합
     # (9B 모델이 analyst 서브명령을 안 쓰고 기본 명령만 써도 데이터 확보되도록)
     out.update(analyst_extras(t))
@@ -429,7 +440,8 @@ def main():
                    "recent_rating_changes=증권사별 등급변경 이력. "
                    "ratings_stale=true면 등급변경이 ratings_days_old일 전이라 오래됨 → '최근 변경'이라 하지 말고 "
                    "'X일 전 이력, 신뢰도 낮음'으로 명시(단 trend_direction/recommendation_trend은 최신이라 신뢰 가능). "
-                   "roe/profitMargin/revenueGrowth/dividendYield는 소수값 → ×100 해서 %로. null이면 '데이터 미제공', 지어내지 말 것.")
+                   "roe/profitMargin/revenueGrowth/dividendYield는 소수값 → ×100 해서 %로. null이면 '데이터 미제공', 지어내지 말 것. "
+                   "data_warnings가 있으면 해당 필드는 신뢰 불가로 걸러진 것 — 그 수치를 복원·추정하지 말 것.")
     print(json.dumps(out, ensure_ascii=False))
 
 

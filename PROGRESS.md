@@ -69,7 +69,7 @@ VS Code 확장(connect-ai-lab.vsix)을 미국 주식 투자 분석 AI로 개조.
 
 ---
 
-## 현재 버전: 3.0.6
+## 현재 버전: 3.0.7
 
 ### v3.x 변경사항 — 결정적 투자 도구 라우팅 (forcedArgs 시스템)
 
@@ -137,6 +137,14 @@ VS Code 확장(connect-ai-lab.vsix)을 미국 주식 투자 분석 AI로 개조.
   호출 → _handlePrompt엔 없어 "isAborted is not defined" 런타임 오류.
   `this._abortController?.signal.aborted`로 교체. (교훈: forcedArgs 블록은
   _handlePrompt 컨텍스트라 corporate 헬퍼 사용 불가.)
+- **v3.0.6 라이브 검증 통과**: "IONQ 종합 분석해줘" → [자동 실행] 1회 + 6섹션 정상,
+  이중 실행·stray 명령줄 없음. 단, 2개 결함 발견 → v3.0.7에서 수정.
+- **v3.0.7 결함 2종 수정**:
+  1. profitMargin 날조: yfinance가 IONQ(적자)에 1.7488(=174.88%) 오류값 반환 →
+     stock.py에 sanity check 추가(>100% 또는 <-1000%면 null + data_warnings).
+  2. 중국어 혼입(经营·现金流 등): system.md:80 규칙만으론 부족 → 종합
+     forcedToolContext에 한국어 강제 지침(🈲) 추가로 생성 지점에서 재차 차단.
+  - profitMargin sanity 단위테스트 6/6 통과. **집 PC 라이브 재검증 대기.**
 
 ### 로컬 도구 6종 (전부 워크스페이스에 복사됨 via update.bat)
 - `stock.py`  — 시세·밸류·재무·목표가·실적일 + hist(지표) + risk(포지션사이징) + analyst

@@ -19048,7 +19048,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                 }
                 forcedToolOutput = parts.join('\n\n');
                 forcedFullCmd = `${py} stock.py ${tk} (+hist +risk) · ${py} macro.py`;
-                forcedToolContext = `\n\n[종합 분석 모드 — 너는 CIO다. 아래는 ${tk}에 대해 자동 실행한 도구들의 실데이터(JSON)다. 반드시 이 숫자만 인용하라. 새 <run_command>를 출력하지 말고(명령줄을 본문에 다시 적지도 말 것) 아래 데이터로 바로 통합 분석할 것.\n🚫 환각 절대 금지: 아래 JSON에 있는 필드·숫자만 사용하라. JSON에 없는 항목(파트너십·매출액·시장 점유율·기술 방식 등)을 사실처럼 지어내지 마라. 값이 null/error면 해당 섹션만 "데이터 확인 실패"로 표기하라.\n📋 출력 구조(이 순서대로): ① 한 줄 결론([매수 관심/관망/회피] + 핵심 이유) ② 펀더멘털(밸류에이션·재무) ③ 기술적(추세·RSI·MA·MACD) ④ 리스크(손절가·권장 비중·R:R) ⑤ 거시 환경이 ${tk}에 주는 영향 ⑥ 종합 의견. 끝에 면책 한 줄. 각 섹션은 해당 도구 데이터에만 근거.\n\n${forcedToolOutput}]`;
+                forcedToolContext = `\n\n[종합 분석 모드 — 너는 CIO다. 아래는 ${tk}에 대해 자동 실행한 도구들의 실데이터(JSON)다. 반드시 이 숫자만 인용하라. 새 <run_command>를 출력하지 말고(명령줄을 본문에 다시 적지도 말 것) 아래 데이터로 바로 통합 분석할 것.\n🈲 언어 규칙: 반드시 한국어로만 작성하라. 중국어·한자·간체자(经营·现金流·状态·减仓 등)를 단 한 글자도 섞지 마라. 전문용어는 영문 약어(PER·RSI·MACD·ATR·FCF) 또는 한국어로 쓴다.\n🚫 환각 절대 금지: 아래 JSON에 있는 필드·숫자만 사용하라. JSON에 없는 항목(파트너십·매출액·시장 점유율·기술 방식 등)을 사실처럼 지어내지 마라. 값이 null/error거나 data_warnings에 걸린 필드는 해당 항목만 "데이터 미제공"으로 표기하고 추정하지 마라.\n📋 출력 구조(이 순서대로): ① 한 줄 결론([매수 관심/관망/회피] + 핵심 이유) ② 펀더멘털(밸류에이션·재무) ③ 기술적(추세·RSI·MA·MACD) ④ 리스크(손절가·권장 비중·R:R) ⑤ 거시 환경이 ${tk}에 주는 영향 ⑥ 종합 의견. 끝에 면책 한 줄. 각 섹션은 해당 도구 데이터에만 근거.\n\n${forcedToolOutput}]`;
                 forcedToolNotice = `\n> 🖥️ **[자동 실행]** 종합 분석 — \`${tk}\` 펀더멘털·기술·리스크 + 거시${ranLabels.length < steps.length ? ` (일부 실패)` : ''}\n\n`;
             } else if (forcedArgs) {
                 forcedFullCmd = `${_pythonCmd()} ${forcedArgs}`;
