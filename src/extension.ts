@@ -19091,6 +19091,47 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                     forcedToolContext = `\n\n[보유 포트폴리오 점검 — 아래 실데이터(JSON)만 인용하라. 새 <run_command>를 출력하지 말 것. ${actionNote}\n🚫 환각 절대 금지: JSON에 있는 숫자만 사용하고, 없는 항목(뉴스·전망·목표가 등)은 지어내지 마라.\n📋 출력 구조: ① 전체 손익 요약(total_unrealized_pl) ② 액션 필요 종목(우선, 각 매매전략) ③ 나머지 보유 한 줄평. 한국어로만 작성.\n\n${forcedToolOutput}]`;
                     forcedToolNotice = `\n> 🖥️ **[자동 실행]** 포트폴리오 점검${detailTickers.length ? ` + 액션종목 ${detailTickers.join('·')} 손절·포지션` : ''}\n\n`;
                 }
+            } else if (forcedArgs.startsWith('screen.py')) {
+                /* v3.1.0 — 발굴 통합(Step A). screen.py 랭킹 후 상위 1~2개 후보에
+                   stock.py TICKER risk를 추가 프리페치 → 진입가·손절·목표·비중까지
+                   한 흐름으로 검증. 발굴(핵심 용도 #1)을 추천까지 잇는다. */
+                const py = _pythonCmd();
+                const toolRoot = _toolRoot();
+                let scOut = '';
+                try {
+                    const r = await runCommandCaptured(`${py} ${forcedArgs}`, toolRoot, () => { /* silent */ }, 5 * 60 * 1000);
+                    scOut = (r.output || '').toString().slice(0, 6000);
+                } catch (e: any) {
+                    forcedToolContext = `\n\n[자동 도구 실행 실패: ${e?.message || e}. "데이터 확인 실패"라고 솔직히 답하고 수치를 지어내지 말 것.]`;
+                }
+                if (scOut) {
+                    const topTickers: string[] = [];
+                    try {
+                        const sj = JSON.parse(scOut);
+                        for (const row of (sj?.ranked || [])) {
+                            const tk = String(row?.ticker || '').trim().toUpperCase();
+                            if (tk && /^[A-Z]{1,5}$/.test(tk) && !topTickers.includes(tk)) topTickers.push(tk);
+                            if (topTickers.length >= 2) break;   // 컨텍스트 보호: 상위 2개만 심층
+                        }
+                    } catch { /* 파싱 실패 시 랭킹만 보여줌 */ }
+                    const extras: string[] = [];
+                    for (const tk of topTickers) {
+                        if (this._abortController?.signal.aborted) break;
+                        try {
+                            const r2 = await runCommandCaptured(`${py} stock.py ${tk} risk`, toolRoot, () => { /* silent */ }, 5 * 60 * 1000);
+                            extras.push(`### [${tk} 진입·손절·목표·비중] ${py} stock.py ${tk} risk\n${(r2.output || '').toString().slice(0, 3000)}`);
+                        } catch (e: any) {
+                            extras.push(`### [${tk}] 리스크 조회 실패: ${e?.message || e} — 추정하지 말 것`);
+                        }
+                    }
+                    forcedToolOutput = `### [발굴 랭킹] ${py} ${forcedArgs}\n${scOut}${extras.length ? '\n\n' + extras.join('\n\n') : ''}`;
+                    forcedFullCmd = `${py} ${forcedArgs}`;
+                    const verifyNote = topTickers.length
+                        ? `상위 후보(${topTickers.join('·')})에 진입·손절·목표·비중 데이터를 추가했다. 이 후보를 심층 검증해 "지금 살 만한가"를 판단하고, 각 후보의 진입가·손절가·목표가·권장 비중을 구체적으로 제시하라.`
+                        : `랭킹 결과만 요약하라.`;
+                    forcedToolContext = `\n\n[종목 발굴 + 검증 — 아래 실데이터(JSON)만 인용하라. 새 <run_command>를 출력하지 말 것. screen.py는 1차 객관 랭킹(추천이 아니라 후보 정렬)이다. ${verifyNote}\n🚫 환각 절대 금지: JSON에 있는 필드만 사용하라. 매출액·파트너십·기술방식·시장점유율 등 없는 정성정보를 지어내지 마라(특히 여러 종목에 같은 설명 복붙=명백한 날조).\n📋 출력 구조: ① 랭킹 요약(상위 3개 score·reasons) ② 상위 후보 1~2개 심층(진입가·손절가·목표가·권장 비중) ③ 한 줄 결론. 한국어로만 작성.\n\n${forcedToolOutput}]`;
+                    forcedToolNotice = `\n> 🖥️ **[자동 실행]** 종목 발굴${topTickers.length ? ` + 상위후보 ${topTickers.join('·')} 검증` : ''}\n\n`;
+                }
             } else if (forcedArgs) {
                 forcedFullCmd = `${_pythonCmd()} ${forcedArgs}`;
                 const toolRoot = _toolRoot();
