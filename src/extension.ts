@@ -19318,10 +19318,17 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             // 모든 스트리밍(1차 및 2차)이 끝난 후, 박스 포장 완료
             this._view.webview.postMessage({ type: 'streamEnd' });
 
-            this._chatHistory.push({ role: 'assistant', content: aiMessage });
+            /* 히스토리엔 "[자동 실행]" UI 알림과 액션 태그를 제거한 깨끗한 버전을 저장한다.
+               안 그러면 다음 턴에 모델이 이 어시스턴트 메시지를 보고 "> 🖥️ [자동 실행] ..."
+               패턴을 그대로 흉내내 출력함(중복 명령줄·이중 실행 환각). 첫 질문은 히스토리가
+               없어 한 번만 나오지만, 두 번째 질문부터 두 번씩 찍히던 원인. */
+            this._chatHistory.push({ role: 'assistant', content: this._stripForcedToolNotice(this._stripActionTags(aiMessage)) });
 
             // 5. Execute agent actions
-            const report = await this._executeActions(aiMessage);
+            //    forcedArgs가 있으면 데이터는 이미 사전 실행돼 주입됨. 모델이 그래도
+            //    <run_command>를 출력하면 _executeActions가 같은 명령을 또 돌려서
+            //    이중 실행됨(예: backtest.py IONQ 두 번). skipRunCommand로 차단한다.
+            const report = await this._executeActions(aiMessage, forcedArgs ? { skipRunCommand: true } : undefined);
 
             // 6. Agent report 추가 (있을 때만)
             if (report.length > 0) {
@@ -22013,6 +22020,17 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
             .replace(/<(?:run_command|command|bash|terminal)>[\s\S]*?<\/(?:run_command|command|bash|terminal)>/gi, '')
             .replace(/<(?:read_brain)>[\s\S]*?<\/(?:read_brain)>/gi, '')
             .replace(/<(?:read_url|url|fetch_url)>[\s\S]*?<\/(?:read_url|url|fetch_url)>/gi, '')
+            .trim();
+    }
+
+    /* 길 B에서 주입한 "> 🖥️ **[자동 실행]** `cmd`" / "> 🖥️ **[명령 실행]** `cmd`" UI 알림
+       블록을 제거. 이 markdown은 액션 태그가 아니라서 _stripActionTags가 못 잡는다.
+       히스토리에 남으면 작은 모델이 다음 턴에 그대로 흉내내 중복 명령줄을 출력하므로,
+       히스토리 저장 직전에 떼어낸다. */
+    private _stripForcedToolNotice(text: string): string {
+        return text
+            .replace(/^\s*>\s*🖥️\s*\*\*\[(?:자동 실행|명령 실행)\]\*\*.*$/gim, '')
+            .replace(/\n{3,}/g, '\n\n')
             .trim();
     }
 
