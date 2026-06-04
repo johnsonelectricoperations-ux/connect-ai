@@ -1,7 +1,7 @@
 # Connect AI — 미국 주식 투자 AI 진행 기록
 
 > 이 파일은 세션 간 컨텍스트 보존용. 새 세션 시작 시 이 파일을 먼저 읽을 것.
-> 마지막 업데이트: 2026-06-04
+> 마지막 업데이트: 2026-06-04 (v3.0.3 — 4개 라우팅 경로 검증 완료)
 
 ---
 
@@ -68,7 +68,7 @@ VS Code 확장(connect-ai-lab.vsix)을 미국 주식 투자 분석 AI로 개조.
 
 ---
 
-## 현재 버전: 3.0.2
+## 현재 버전: 3.0.3
 
 ### v3.x 변경사항 — 결정적 투자 도구 라우팅 (forcedArgs 시스템)
 
@@ -105,6 +105,20 @@ VS Code 확장(connect-ai-lab.vsix)을 미국 주식 투자 분석 AI로 개조.
   - `_stripStrayCommandEcho`: 모델이 본문에 흉내낸 "▶ py ..." echo 줄 제거
   - display/history 저장 분리: 히스토리엔 notice 전부 제거(흉내 방지), 표시엔 정당한 [자동 실행] 유지
 
+**v3.0.3 — 미검증 4개 라우팅 경로 키워드 보강 + 검증 완료**
+- **문제**: `_detectInvestmentCommand`의 4개 키워드 감지 정규식이 너무 좁아
+  흔한 투자 질문이 라우팅을 못 타고 `return null`로 떨어짐(9B 폴백 → 날조 위험).
+- **수정**: 4개 정규식 확장 (extension.ts 679~689줄)
+  - hasRisk: 손절·포지션사이징·비중·매수수량·ATR·R:R 등 추가
+  - hasChart: RSI·볼린저·지지/저항·캔들·추세 등 기술분석 전반 포함 (단, "rsi" 단독은 backtest 우선)
+  - hasSec: 공시·10-K/Q·사업보고서·EDGAR·IR자료 등 추가
+  - hasFundamental: 재무·PER/EPS/ROE·매출/이익·순이익·영업이익 단독 쿼리 포함
+- 27개 인라인 단위테스트 전부 통과 + 집 PC 라이브 테스트 통과:
+  - "IONQ 차트 분석해줘" → stock.py IONQ hist (기술분석가) ✅
+  - "IONQ 손절 어디야" → stock.py IONQ risk (리스크매니저) ✅
+  - "AAPL 공시 뭐 있어" → sec.py AAPL (리서처) ✅
+  - "IONQ 재무 어때" → stock.py IONQ (펀더멘털분석가) ✅
+
 ### 로컬 도구 6종 (전부 워크스페이스에 복사됨 via update.bat)
 - `stock.py`  — 시세·밸류·재무·목표가·실적일 + hist(지표) + risk(포지션사이징) + analyst
 - `macro.py`  — VIX·금리·달러·환율·지수·유가·금 + regime
@@ -119,6 +133,8 @@ VS Code 확장(connect-ai-lab.vsix)을 미국 주식 투자 분석 AI로 개조.
 - ✅ portfolio: 보유종목 손익·action·alerts 정상
 - ✅ screen: "[자동 실행]" 중복 없음 (v3.0.2: 환각은 추가 검증 대기)
 - ✅ 연속 4개 질문: 이중 실행 없음, 각 답변 독립 정상 작동
+- ✅ (v3.0.3) 기술분석가(hist)·리스크매니저(risk)·리서처(sec)·펀더멘털분석가(stock)
+  4개 라우팅 경로 라이브 통과 → **9개 에이전트 데이터 연결 전부 검증 완료**
 
 ---
 
