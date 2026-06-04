@@ -682,11 +682,14 @@ function _detectInvestmentCommand(prompt: string): string | null {
     const hasPortfolio = /포트폴리오\s*점검|내\s*포트|보유\s*종목|내\s*종목|뭐\s*팔|뭘\s*팔|손익\s*점검|보유\s*현황|포트폴리오\s*현황/.test(lp);
     const hasScreen = /종목\s*발굴|발굴해|발굴\s*해|스크리닝|스크린|저평가\s*종목|살\s*만한|살만한|종목\s*추천|후보\s*찾|종목\s*골라/.test(lp);
     const hasMacro = /거시|매크로|macro|시황|시장\s*환경|시장환경|증시\s*환경|공포지수|vix|위험\s*회피|시장\s*심리|시장심리|달러인덱스|dxy/.test(lp);
-    const hasRisk = /손절|리스크\s*관리|포지션\s*사이징|비중\s*얼마|얼마나\s*사|몇\s*주|손실\s*한도|스탑로스|스톱로스/.test(lp);
-    const hasChart = /차트|기술적|기술\s*분석|기술분석|매매\s*타이밍|이동평균|macd|봉\s*분석|추세\s*분석/.test(lp);
-    const hasSec = /공시|sec\b|10-?k|10-?q|사업보고서|분기보고서|edgar/.test(lp);
+    const hasRisk = /손절|리스크\s*관리|포지션\s*사이징|비중\s*얼마|얼마나\s*사|몇\s*주\s*사|몇주\s*사|손실\s*한도|스탑로스|스톱로스|스탑\s*어디|진입\s*수량|매수\s*수량|atr|r:r|rr비율/.test(lp);
+    // hasChart: RSI·볼린저·지지·저항·캔들 등 기술분석 전반을 포함.
+    // ⚠️ "rsi" 단독은 backtest 컨텍스트(hasBacktest)보다 우선순위 낮게 처리.
+    const hasChart = /차트|기술적|기술\s*분석|기술분석|매매\s*타이밍|이동평균|macd|봉\s*분석|추세\s*분석|rsi\s*(어때|분석|보여|알려|과매|상태)|볼린저|지지선|저항선|캔들|패턴\s*분석|추세\s*어때|추세선|시그널/.test(lp);
+    const hasSec = /공시|sec\b|10-?k|10-?q|사업보고서|분기보고서|edgar|ir\s*자료|annual\s*report/.test(lp);
     const hasAnalyst = /월가|애널리스트|analyst|등급\s*변경|목표가|투자의견|컨센서스/.test(lp);
-    const hasFundamental = /밸류에이션|valuation|적정주가|재무\s*분석|펀더멘털|per\s*적정|저평가|고평가/.test(lp);
+    // hasFundamental: "재무" 단독, "PER·EPS·ROE" 단독, "이익" 쿼리도 포함.
+    const hasFundamental = /밸류에이션|valuation|적정주가|재무\s*분석|펀더멘털|per\s*적정|저평가|고평가|재무\s*(어때|봐|알려|보여|점검)|재무제표|eps\s*(어때|분석)|roe\s*(어때|분석)|per\s*(어때|높|낮|분석)|매출\s*(성장|어때)|이익\s*(어때|분석|성장|마진)|순이익|영업이익/.test(lp);
 
     // 발굴 테마 → suggest 모드
     const THEMES: Record<string,string> = {
