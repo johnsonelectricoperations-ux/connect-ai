@@ -33,6 +33,7 @@ VS Code 확장(connect-ai-lab.vsix)을 미국 주식 투자 분석 AI로 개조.
 | 2~3주차 | 시세/재무 데이터 도구 (yfinance, 기술지표 자동계산) | ✅ 완료 |
 | 4~5주차 | 백테스팅 도구 + 결정적 라우팅 시스템 (forcedArgs) | ✅ 완료 |
 | 6주차 | 브레인 템플릿 (종목분석지·투자일지), 면책고지 강제화 | ✅ 템플릿 완료·배포배선 추가 |
+| Solo | 종합 분석 (종목 1개 → 펀더멘털+기술+리스크+거시 통합) | ✅ v3.0.5 (멀티 프리페치) |
 | 상시 | 환각 방지 가드레일, 법적 검토 | 🔄 진행중 |
 
 ---
@@ -68,7 +69,7 @@ VS Code 확장(connect-ai-lab.vsix)을 미국 주식 투자 분석 AI로 개조.
 
 ---
 
-## 현재 버전: 3.0.4
+## 현재 버전: 3.0.5
 
 ### v3.x 변경사항 — 결정적 투자 도구 라우팅 (forcedArgs 시스템)
 
@@ -119,6 +120,20 @@ VS Code 확장(connect-ai-lab.vsix)을 미국 주식 투자 분석 AI로 개조.
   - "AAPL 공시 뭐 있어" → sec.py AAPL (리서처) ✅
   - "IONQ 재무 어때" → stock.py IONQ (펀더멘털분석가) ✅
 
+**v3.0.5 — 종합 분석(Solo) 멀티 프리페치**
+- **목표**: "IONQ 종합 분석해줘" → 한 종목을 펀더멘털+기술+리스크+거시 통합 브리핑.
+- **설계 선택**: 무거운 multi-agent(_handleCorporatePrompt) 대신 **검증된 forcedArgs
+  주입 메커니즘 재사용**(원칙 #3: 복잡한 워크플로우보다 직접 주입). 일반 채팅 경로에서 동작.
+- **구현** (extension.ts):
+  - `_detectComprehensiveAnalysis(prompt)`: "종합/전반적/다각도/풀 분석" + 티커 감지.
+    포트폴리오·발굴·티커 없는 "종합 시황"은 제외(기존 라우팅에 양보).
+  - forcedArgs 블록에 분기 추가: 매칭 시 `stock.py TK`·`stock.py TK hist`·
+    `stock.py TK risk`·`macro.py` 4개를 순차 사전 실행 → 하나의 forcedToolContext로 결합.
+  - CIO 통합 지침 주입: ①결론 ②펀더멘털 ③기술 ④리스크 ⑤거시영향 ⑥종합의견+면책.
+  - 단일 `[자동 실행] 종합 분석 — TK 펀더멘털·기술·리스크 + 거시` notice 1회 표시.
+  - downstream(cmdReads 억제·skipRunCommand)은 forcedArgs 진위값만 보므로 sentinel로 호환.
+- 15개 인라인 단위테스트 통과 (종합 7건 티커 추출 + 비대상 8건 null). **집 PC 라이브 검증 대기.**
+
 ### 로컬 도구 6종 (전부 워크스페이스에 복사됨 via update.bat)
 - `stock.py`  — 시세·밸류·재무·목표가·실적일 + hist(지표) + risk(포지션사이징) + analyst
 - `macro.py`  — VIX·금리·달러·환율·지수·유가·금 + regime
@@ -140,10 +155,10 @@ VS Code 확장(connect-ai-lab.vsix)을 미국 주식 투자 분석 AI로 개조.
 
 ## 다음 작업
 
-### Step 4 — 종합 분석 흐름 (Solo Mode)
-"IONQ 종합 분석해줘" → CIO가 기술+펀더멘털+리스크+매크로 연계.
-👔 버튼(Solo Mode) ON 시 `_handleCorporatePrompt` 경로. extension.ts 수정 필요 →
-집 PC 테스트 동반 필수(위험). 신중히 접근.
+### Step 4 — 종합 분석 흐름 ✅ 완료 (v3.0.5)
+"IONQ 종합 분석해줘" → 펀더멘털+기술+리스크+거시 4개 도구 사전 실행 → CIO 통합.
+- 원래 Solo Mode(_handleCorporatePrompt) 대신 forcedArgs 멀티 프리페치로 구현(안전·빠름).
+- **집 PC 라이브 검증 필요** (아래 체크리스트 참고).
 
 ### Step 5 — 브레인 템플릿 (6주차) ✅ 완료
 종목 분석지·투자일지 brain 템플릿 — `knowledge-pack/10_Wiki/투자지식/`에 존재
@@ -224,6 +239,9 @@ VSIX 재설치 → Reload → 새 채팅 연속 테스트:
 - [ ] "내 포트폴리오 점검해줘" → [자동 실행] 1회, 손익·action·alerts
 - [ ] "양자컴퓨터 종목 발굴해줘" → [자동 실행] 1회, 실제 필드만 인용 (파트너십 날조 없음)
 - [ ] "▶ py ..." 같은 stray 명령줄이 본문에 안 나타나는지 확인
+- [ ] (v3.0.5) "IONQ 종합 분석해줘" → [자동 실행] "종합 분석 — IONQ ..." 1회,
+      ①결론 ②펀더멘털 ③기술 ④리스크 ⑤거시영향 ⑥종합의견+면책 6섹션 출력,
+      각 섹션 숫자가 실제 도구값과 일치(날조 없음), 이중 실행 없음 확인
 
 ### 두 핵심 용도 통합 시나리오 (최종 목표)
 - 발굴: "관심종목 중 살 만한 거 추천" → screen.py 랭킹 → 상위 1~2개 기술+펀더멘털+리스크 분석 → 진입가·손절·목표·비중

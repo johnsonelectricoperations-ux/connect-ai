@@ -720,6 +720,33 @@ function _detectInvestmentCommand(prompt: string): string | null {
     return null;  // 못 잡으면 9B 판단으로 폴백
 }
 
+/* v3.0.5 — 종합 분석(Solo) 감지. "IONQ 종합 분석해줘"처럼 한 종목을
+   펀더멘털·기술·리스크·거시 전부 통합해 달라는 요청을 잡는다. 단일 도구
+   라우팅(_detectInvestmentCommand)보다 먼저 검사하며, 매칭 시 4개 도구를
+   사전 실행해 CIO가 한 컨텍스트로 통합 브리핑하도록 한다.
+   반드시 티커가 있어야 발동(시장 전체 "종합 시황" 등은 macro로 흘려보냄). */
+function _detectComprehensiveAnalysis(prompt: string): string | null {
+    const p = (prompt || '').trim();
+    if (!p) return null;
+    const lp = p.toLowerCase();
+
+    const wantsComprehensive = /종합\s*(분석|평가|진단|의견|적으로|해|봐|좀)|종합분석|전반적\s*(분석|평가|으로)|다각도|풀\s*분석|comprehensive|싹\s*(다\s*)?분석|총\s*정리|모든\s*관점|전체\s*(적으로\s*)?분석|다\s*분석해|전체적으로\s*봐/.test(lp);
+    if (!wantsComprehensive) return null;
+
+    // 티커 추출 — _detectInvestmentCommand와 동일 규칙
+    const STOP = new Set(['RSI','MACD','MA','ATR','CEO','CIO','VIX','PER','PBR','PSR','ROE','EPS','SEC',
+        'ETF','IPO','FOMC','GDP','CPI','AI','USD','KRW','DXY','WTI','US','OK','TV','YOY','QOQ','RR','IT','EV','PS']);
+    let ticker: string | null = null;
+    const mm = p.match(/\b[A-Z]{1,5}\b/g);
+    if (mm) { for (const c of mm) { if (!STOP.has(c)) { ticker = c; break; } } }
+    if (!ticker) return null;
+
+    // 포트폴리오/발굴 "종합"은 종목 단위 종합이 아니므로 제외 → 기존 라우팅에 양보
+    if (/포트폴리오|보유\s*종목|발굴|스크리닝/.test(lp)) return null;
+
+    return ticker;
+}
+
 // ============================================================
 // Connect AI — Full Agentic Local AI for VS Code
 // 100% Offline · File Create · File Edit · Terminal · Multi-file Context
@@ -18988,12 +19015,44 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             let forcedToolNotice = '';
             let forcedToolOutput = '';   // raw output — reused when model emits stray <run_command>
             let forcedFullCmd = '';
-            const forcedArgs = _detectInvestmentCommand(prompt);
-            if (forcedArgs) {
+            /* v3.0.5 — 종합 분석(Solo)을 단일 라우팅보다 먼저 검사. 매칭되면 4개
+               도구를 사전 실행해 CIO가 통합하도록 forcedArgs를 sentinel로 둔다
+               (downstream의 cmdReads 억제·skipRunCommand는 forcedArgs 진위값만 봄). */
+            const comprehensiveTicker = _detectComprehensiveAnalysis(prompt);
+            const forcedArgs = comprehensiveTicker ? `__comprehensive__ ${comprehensiveTicker}` : _detectInvestmentCommand(prompt);
+            const _toolRoot = () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+                || (() => { try { const d = getCompanyDir(); return d && fs.existsSync(d) ? d : undefined; } catch { return undefined; } })()
+                || process.cwd();
+            if (comprehensiveTicker) {
+                const tk = comprehensiveTicker;
+                const py = _pythonCmd();
+                const toolRoot = _toolRoot();
+                const steps = [
+                    { label: '펀더멘털', cmd: `${py} stock.py ${tk}` },
+                    { label: '기술적',   cmd: `${py} stock.py ${tk} hist` },
+                    { label: '리스크',   cmd: `${py} stock.py ${tk} risk` },
+                    { label: '거시',     cmd: `${py} macro.py` },
+                ];
+                const parts: string[] = [];
+                const ranLabels: string[] = [];
+                for (const s of steps) {
+                    if (isAborted()) break;
+                    try {
+                        const r = await runCommandCaptured(s.cmd, toolRoot, () => { /* silent */ }, 5 * 60 * 1000);
+                        const out = (r.output || '').toString().slice(0, 4000);
+                        parts.push(`### [${s.label}] ${s.cmd}\n${out}`);
+                        ranLabels.push(s.label);
+                    } catch (e: any) {
+                        parts.push(`### [${s.label}] ${s.cmd}\n[실행 실패: ${e?.message || e} — 이 섹션은 "데이터 확인 실패"로 답하고 지어내지 말 것]`);
+                    }
+                }
+                forcedToolOutput = parts.join('\n\n');
+                forcedFullCmd = `${py} stock.py ${tk} (+hist +risk) · ${py} macro.py`;
+                forcedToolContext = `\n\n[종합 분석 모드 — 너는 CIO다. 아래는 ${tk}에 대해 자동 실행한 도구들의 실데이터(JSON)다. 반드시 이 숫자만 인용하라. 새 <run_command>를 출력하지 말고(명령줄을 본문에 다시 적지도 말 것) 아래 데이터로 바로 통합 분석할 것.\n🚫 환각 절대 금지: 아래 JSON에 있는 필드·숫자만 사용하라. JSON에 없는 항목(파트너십·매출액·시장 점유율·기술 방식 등)을 사실처럼 지어내지 마라. 값이 null/error면 해당 섹션만 "데이터 확인 실패"로 표기하라.\n📋 출력 구조(이 순서대로): ① 한 줄 결론([매수 관심/관망/회피] + 핵심 이유) ② 펀더멘털(밸류에이션·재무) ③ 기술적(추세·RSI·MA·MACD) ④ 리스크(손절가·권장 비중·R:R) ⑤ 거시 환경이 ${tk}에 주는 영향 ⑥ 종합 의견. 끝에 면책 한 줄. 각 섹션은 해당 도구 데이터에만 근거.\n\n${forcedToolOutput}]`;
+                forcedToolNotice = `\n> 🖥️ **[자동 실행]** 종합 분석 — \`${tk}\` 펀더멘털·기술·리스크 + 거시${ranLabels.length < steps.length ? ` (일부 실패)` : ''}\n\n`;
+            } else if (forcedArgs) {
                 forcedFullCmd = `${_pythonCmd()} ${forcedArgs}`;
-                const toolRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
-                    || (() => { try { const d = getCompanyDir(); return d && fs.existsSync(d) ? d : undefined; } catch { return undefined; } })()
-                    || process.cwd();
+                const toolRoot = _toolRoot();
                 try {
                     const r = await runCommandCaptured(forcedFullCmd, toolRoot, () => { /* silent */ }, 5 * 60 * 1000);
                     forcedToolOutput = (r.output || '').toString().slice(0, 8000);
