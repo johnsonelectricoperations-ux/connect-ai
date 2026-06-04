@@ -31,7 +31,7 @@ VS Code 확장(connect-ai-lab.vsix)을 미국 주식 투자 분석 AI로 개조.
 |------|------|------|
 | 1주차 | agents.ts + prompts 교체 → 투자 프로토타입 | ✅ 완료 |
 | 2~3주차 | 시세/재무 데이터 도구 (yfinance, 기술지표 자동계산) | ✅ 완료 |
-| 4~5주차 | 증권사 API (잔고/주문), 백테스팅 도구 | ⬜ 미시작 |
+| 4~5주차 | 백테스팅 도구 + 결정적 라우팅 시스템 (forcedArgs) | ✅ 완료 |
 | 6주차 | 브레인 템플릿 (종목분석지·투자일지), 면책고지 강제화 | ⬜ 미시작 |
 | 상시 | 환각 방지 가드레일, 법적 검토 | 🔄 진행중 |
 
@@ -46,89 +46,95 @@ VS Code 확장(connect-ai-lab.vsix)을 미국 주식 투자 분석 AI로 개조.
   - editor→센티먼트분석가, writer→리포트작가, researcher→리서처
 - `assets/prompts/system.md`: 투자팀 정체성, 데이터 원칙, 투자 규칙 주입
 - `assets/prompts/ceo-classifier.md`: 투자 도메인 라우팅 규칙
-- `assets/prompts/ceo-chat.md`: CIO 소개 메시지
 
-### 2~3주차 — 데이터 도구 (v2.91.0 기준 완료)
+### 2~3주차 — 데이터 도구
 - `stock.py` (yfinance 기반):
-  - `py stock.py TICKER` → price, marketCap, trailingPE, forwardPE, priceToSales, eps, high52, low52, sector
-  - `py stock.py TICKER hist` → 60일 일봉 + **기술지표 자동계산**: RSI(14), MA(20/50), MACD(12/26/9), Signal, Histogram + summary 필드
-  - summary: trend(bullish_aligned/bearish_aligned), rsi_state(overbought/oversold/neutral)
-- `update.bat`: git pull + stock.py 동기화 자동화 (더블클릭 한 번)
-- run_command 자동 분석: 명령 실행 후 결과를 AI가 자동 분석
+  - `py stock.py TICKER` → price, marketCap, trailingPE, forwardPE, priceToSales, eps, high52, low52, sector, recommendation_trend, recent_rating_changes
+  - `py stock.py TICKER hist` → 60일 일봉 + RSI(14), MA(20/50), MACD(12/26/9), Signal, Histogram + summary
+  - `py stock.py TICKER risk` → beta·atr14 기반 손절가·매수수량·비중·최대손실·R:R 사전계산
+  - `py stock.py TICKER analyst` → 전용 애널리스트 등급변경·의견추세·목표가
+- `macro.py` → VIX·S&P500·나스닥·다우·달러·10년물금리·환율·유가·금·BTC + state/regime
+- `backtest.py` → MA크로스/RSI 전략, 룩어헤드 없음, 수수료 0.1%, 표본 2년
+- `sec.py` → SEC EDGAR 공식 공시 목록·원문 링크·XBRL 재무
+- `portfolio.py` → 보유종목 손익·손절거리·목표거리·action·alerts (portfolio.csv)
+- `screen.py` → 종목발굴 value/momentum + suggest 테마 모드 (watchlist.txt)
 
-### 에이전트 페르소나 강화 (v2.90.6~v2.91.0)
-- **펀더멘털분석가**: EPS 해석 규칙 주입 — trailing EPS 양수라도 흑자 단정 금지, forward PER 음수 = "향후 적자 예상"
-- **기술분석가**: RSI/MA/MACD 해석 규칙 + hist 명령 사용 의무화
-- **리스크매니저**: 포지션 사이징 공식, R:R 1:2, 손절 기준 주입
-
-### 상시 — 환각 방지
-- system.md: 차트 분석 시 hist 필수, 추측 금지, null = "확인 실패" 원칙
-- brain 폴더 지식 파일 3개 (C:\project_list\ai_agent_antigravity\10_Wiki\투자지식\):
-  - `펀더멘털_지표해석.md`, `기술지표_해석법.md`, `리스크관리_규칙.md`
+### 에이전트 페르소나 강화
+- 기술분석가: hist 실행 의무, RSI/MA/MACD 해석 규칙 주입
+- 펀더멘털분석가: EPS 해석 (forward PER 음수="향후 적자 예상"), 섹터별 잣대
+- 리스크매니저: 포지션 사이징 공식, R:R 1:2, ATR 손절 기준, USD 일관성
+- 매크로분석가: change_pct 방향 오기재 차단 (금 +1.25%→"약세" 날조 사례)
+- 퀀트엔지니어: backtest.py 강제 실행, 수치 날조 차단
 
 ---
 
-## 현재 버전: 2.94.0
+## 현재 버전: 3.0.2
+
+### v3.x 변경사항 — 결정적 투자 도구 라우팅 (forcedArgs 시스템)
+
+**배경 문제**: 9B 모델이 자발적으로 도구를 잘 호출하지 않아 데이터 없이 날조하거나,
+호출해도 타이밍이 늦고 followUp 루프가 불안정했음.
+
+**v3.0.0 — 사전 실행(prefetch) 시스템**
+- `_detectInvestmentCommand(prompt)`: 사용자 프롬프트에서 투자 도구 키워드 감지
+  - "거시 환경" → `macro.py`
+  - "백테스트/골든크로스" → `backtest.py TICKER`
+  - "포트폴리오 점검" → `portfolio.py`
+  - "종목 발굴/양자컴퓨터" → `screen.py suggest quantum value` 등
+- LLM 호출 **전에** 시스템이 명령을 실행 → 결과를 `forcedToolContext`로 system prompt에 주입
+- 모델은 이미 받은 데이터로 분석만 하면 됨 → 날조 원천 차단
+- 사용자에게 `> 🖥️ [자동 실행] py -3 명령` 즉시 표시
+
+**v3.0.1 — 이중 실행 버그 수정**
+- **문제**: 9B가 forcedToolContext 지시를 무시하고 `<run_command>` 태그를 출력
+  → cmdReads가 감지해 followUp이 같은 명령을 재실행 (두 번 실행)
+  → 또는 cmdReads=[] 로 막으면 followUp 자체가 안 돼서 "▶ py 명령" 후 멈춤
+- **수정**: `cmdReadsRaw` 감지는 하되 `cmdReads=[]` 유지. `needsForcedFollowUp=true`일 때
+  `forcedToolOutput`(사전 실행 결과)을 `fetchedContent`에 주입 → followUp 발동·분석 출력
+- `_executeActions`에 `skipRunCommand:true` → ACTION 6 경로 이중 실행 차단
+- `_stripForcedToolNotice` 헬퍼: 히스토리 저장 시 "[자동 실행]" notice 제거
+  → 다음 턴에 9B가 이 패턴 흉내내 중복 출력하던 문제 차단
+
+**v3.0.2 — screen 환각 차단 + screen.py 데이터 보강**
+- **문제**: screen.py 출력에 없는 데이터(매출 금액·파트너십·기술방식·시총·52주 최고/저)를
+  9B가 전부 날조. IBM/IONQ에 동일 "Microsoft·Oracle·BMW 파트너십" 복붙.
+- **수정**:
+  - `screen.py`에 누락 필드 추가: `fiftyTwoWeekHigh`, `fiftyTwoWeekLow`, `marketCap`, `trailingPE`
+  - `screen.py` 출력에 `fields_only` 지시 주입 → 모델에게 "이 필드 목록만 사용 가능" 명시
+  - `forcedToolContext`에 강화된 환각 차단 지침 ("여러 종목에 동일 정성 설명 복붙=날조")
+  - `_stripStrayCommandEcho`: 모델이 본문에 흉내낸 "▶ py ..." echo 줄 제거
+  - display/history 저장 분리: 히스토리엔 notice 전부 제거(흉내 방지), 표시엔 정당한 [자동 실행] 유지
 
 ### 로컬 도구 6종 (전부 워크스페이스에 복사됨 via update.bat)
-- stock.py  — 시세·밸류·재무·목표가·실적일 + hist(지표) + risk(포지션사이징)
-- macro.py  — VIX·금리·달러·환율·지수·유가·금 + regime
-- backtest.py — MA크로스/RSI 전략 백테스트
-- sec.py    — SEC EDGAR 공식 공시·재무
-- portfolio.py — 보유종목 손익·손절·목표·액션 (portfolio.csv)
-- screen.py — 종목발굴 랭킹 value/momentum (watchlist.txt)
+- `stock.py`  — 시세·밸류·재무·목표가·실적일 + hist(지표) + risk(포지션사이징) + analyst
+- `macro.py`  — VIX·금리·달러·환율·지수·유가·금 + regime
+- `backtest.py` — MA크로스/RSI 전략 백테스트
+- `sec.py`    — SEC EDGAR 공식 공시·재무
+- `portfolio.py` — 보유종목 손익·손절·목표·액션 (portfolio.csv)
+- `screen.py` — 종목발굴 랭킹 value/momentum + suggest 테마 (watchlist.txt)
 
-### ⏳ 집 PC에서 테스트 대기 중 (v2.92.0 ~ 2.94.0 일괄)
-코드/지식 완성·푸시됨, update.bat 후 테스트만 남음:
-- macro.py / backtest.py / sec.py / portfolio.py / screen.py
-- 에이전트 9종 페르소나 + 스킬 9종 (_company/_agents/{id}/skills/)
-- 지식 추가분: 거시경제·시장심리·섹터별·SEC공시·매매전략·종목발굴 + 템플릿 2종
-→ 테스트 체크리스트는 맨 아래 참고.
-
-### 검증 완료 (집 PC 테스트 통과)
-- ✅ `py stock.py IONQ` → 실시간 가격·밸류에이션 정확 (beta·roe·목표가·실적일 포함)
-- ✅ `py stock.py IONQ hist` → RSI·MA·MACD·ATR 계산값 정확
-- ✅ `py stock.py IONQ risk [총자산] [위험%]` → 손절가·수량·비중·최대손실·R:R 사전계산 (USD)
-- ✅ 기술분석가: hist 실행 후 실제 지표값으로 분석 (테스트 통과)
-- ✅ 펀더멘털분석가: forward PER 음수 해석 + 재무지표(roe·부채·목표가) 인용
-- ✅ 리스크매니저: risk 모드로 beta 3.05 → 비중 2.5% 자동, 5만달러 포지션 정확 (테스트 통과)
-- ✅ Brain 지식 인용 작동 (📚 출처 표기)
-
-### 주요 버그 수정 이력 (2~3주차)
-- v2.91.2: stock.py 덮어쓰기 금지 + 명령 전 추측 출력 금지
-- v2.91.3: ATR 추가 + 리스크매니저 quote 실행 의무화
-- v2.91.4: risk 모드 신설 (포지션 사이징 사전계산)
-- v2.91.5: risk 모드 통화 USD 일관성 + 실적일 환각 차단
-- v2.91.6: ⭐ UTF-8 출력 강제 (Windows cp949 크래시 → AI 날조 근본원인 제거)
-           + 명령 실패 시 "직접 계산" 날조 금지
-
-### 9B 모델 대응 핵심 교훈
-- 모델은 명령 하나만 실행하고 산수에 약함 → 계산을 Python(stock.py)에서 끝내고
-  모델은 "읽어주기"만 시키는 게 가장 안정적 (risk 모드가 그 예).
-- stock.py 출력에 이모지·특수문자 금지 (Windows 인코딩 크래시 유발).
+### v3.0.x 검증 완료 (집 PC 테스트 통과)
+- ✅ macro: "[자동 실행]" 1회만, 실시간 VIX·금리·regime 분석 정상
+- ✅ backtest: 이전 "▶ py 후 멈춤" 해결, 전략 vs 단순보유 비교 출력
+- ✅ portfolio: 보유종목 손익·action·alerts 정상
+- ✅ screen: "[자동 실행]" 중복 없음 (v3.0.2: 환각은 추가 검증 대기)
+- ✅ 연속 4개 질문: 이중 실행 없음, 각 답변 독립 정상 작동
 
 ---
 
-## 다음 작업 (에이전트 데이터 연결)
+## 다음 작업
 
-### Step 1 — stock.py 확장 ✅ 완료 (v2.91.1~2.91.6)
-베타·목표가·재무지표·실적일 추가, risk 모드 신설. 리스크매니저 완성.
-
-### Step 2 — macro.py 신규 ✅ 완료 (v2.92.0, 테스트 대기)
-VIX·S&P500·나스닥·다우·달러·10년물금리·환율·유가·금·BTC + state/regime 라벨.
-매크로분석가·센티먼트분석가 페르소나 연결. 거시·심리 지식 추가.
-
-### Step 3 — 백테스팅 ✅ 완료 (v2.92.0, 테스트 대기)
-backtest.py: MA크로스/RSI 전략, 룩어헤드 없음. 퀀트엔지니어 연결.
-(공포탐욕지수 CNN API는 보류 — 현재 VIX로 심리 대용. 필요시 추가.)
-
-### Step 4 — 종합 분석 흐름 (Solo Mode) ← 다음 여기
+### Step 4 — 종합 분석 흐름 (Solo Mode)
 "IONQ 종합 분석해줘" → CIO가 기술+펀더멘털+리스크+매크로 연계.
-👔 버튼(Solo Mode) ON 시 _handleCorporatePrompt 경로. extension.ts 수정 필요 →
+👔 버튼(Solo Mode) ON 시 `_handleCorporatePrompt` 경로. extension.ts 수정 필요 →
 집 PC 테스트 동반 필수(위험). 신중히 접근.
 
 ### Step 5 — 브레인 템플릿 (6주차)
-종목 분석지·투자일지 brain 템플릿. (지식 폴더에 템플릿 .md 추가 — 안전.)
+종목 분석지·투자일지 brain 템플릿. (지식 폴더에 .md 추가 — 안전.)
+
+### 보류
+- 증권사 API (잔고/주문 자동화): 별도 단계
+- 공포탐욕지수 CNN API: 현재 VIX로 대용, 필요시 추가
 
 ---
 
@@ -136,14 +142,14 @@ backtest.py: MA크로스/RSI 전략, 룩어헤드 없음. 퀀트엔지니어 연
 
 | 에이전트 | 필요 데이터 | 상태 | 연결 방법 |
 |---------|-----------|------|---------|
-| 기술분석가 | RSI, MA, MACD, ATR | ✅ 완료 | stock.py hist |
-| 펀더멘털분석가 | PER, EPS, 재무제표, 목표가 | ✅ 완료 | stock.py (확장) |
-| 리스크매니저 | 베타(β), ATR, 포지션사이징 | ✅ 완료 | stock.py risk |
-| 매크로분석가 | 금리, VIX, DXY, 환율 | ✅ 완료(테스트대기) | macro.py |
-| 센티먼트분석가 | VIX, 공포탐욕지수 | ✅ VIX 연결(테스트대기) | macro.py ^VIX |
-| 리서처 | 뉴스, SEC 공시 | ✅ 완료(테스트대기) | sec.py + 웹검색 |
-| 포트폴리오매니저 | 실적발표일, 배당일 | ✅ 완료(테스트대기) | stock.py |
-| 퀀트엔지니어 | 백테스팅 | ✅ 완료(테스트대기) | backtest.py |
+| 기술분석가 | RSI, MA, MACD, ATR | ✅ 완료·검증 | stock.py hist |
+| 펀더멘털분석가 | PER, EPS, 재무제표, 목표가 | ✅ 완료·검증 | stock.py |
+| 리스크매니저 | 베타(β), ATR, 포지션사이징 | ✅ 완료·검증 | stock.py risk |
+| 매크로분석가 | 금리, VIX, DXY, 환율 | ✅ 완료·검증 | macro.py |
+| 센티먼트분석가 | VIX, 공포탐욕지수 | ✅ VIX 연결·검증 | macro.py |
+| 리서처 | 뉴스, SEC 공시, 종목발굴 | ✅ 완료·검증 | sec.py + screen.py + 웹검색 |
+| 포트폴리오매니저 | 실적발표일, 배당일, 보유현황 | ✅ 완료·검증 | stock.py + portfolio.py |
+| 퀀트엔지니어 | 백테스팅 | ✅ 완료·검증 | backtest.py |
 | 리포트작가 | 없음 (결과 종합) | ✅ | - |
 
 ---
@@ -153,57 +159,58 @@ backtest.py: MA크로스/RSI 전략, 룩어헤드 없음. 퀀트엔지니어 연
 - OS: Windows 11, i5-13400F, AMD RX 7600 8GB, RAM 32GB
 - LM Studio: 포트 12345, Qwen3.5-9B Q4_K_M, Context 16384, GPU Offload 32
 - Python: py 3.14.2 (py 명령어 사용)
-- 워크스페이스: C:\project_list\NA-stock-ai (stock.py 여기에 복사해서 사용)
+- 워크스페이스: C:\project_list\NA-stock-ai (stock.py·도구들 여기에 복사)
 - Brain 폴더: C:\project_list\ai_agent_antigravity\10_Wiki\투자지식\
-- update.bat: C:\project_list\connect-ai\update.bat (더블클릭으로 pull + stock.py 동기화)
+- update.bat: C:\project_list\connect-ai\update.bat (더블클릭으로 pull + 도구 동기화)
 
 ---
 
 ## 핵심 원칙 (변경 금지)
 
 1. 에이전트 내부 id 변경 금지 (이미지·tool-seeds와 연결됨)
-2. 수치는 stock.py 결과만 인용, 절대 지어내지 않음
+2. 수치는 도구(.py) 결과만 인용 — 절대 지어내지 않음
 3. 9B 모델 한계 고려 — 복잡한 런타임 워크플로우보다 페르소나에 규칙 직접 주입
 4. 면책고지 필수 (투자 책임은 사용자 본인)
 5. 로컬 도구(.py 6종) 출력에 이모지·특수문자 금지, UTF-8 강제
 6. 계산은 Python에서 끝내고 모델은 결과를 "읽어주기"만
-7. 사용자 데이터(portfolio.csv·watchlist.txt)는 update.bat이 덮어쓰지 않음(없을때만 시드)
+7. 사용자 데이터(portfolio.csv·watchlist.txt)는 update.bat이 덮어쓰지 않음 (없을 때만 시드)
+8. 도구 JSON에 없는 정성 정보(파트너십·기술방식·점유율)는 지어내지 말 것
+
+---
+
+## 9B 모델 대응 핵심 교훈
+
+- 자발적 도구 호출을 믿지 말 것 → 시스템이 먼저 실행(forcedArgs)하고 결과를 주입.
+- 모델은 명령 하나만 도는 경향 → 핵심 지표를 한 명령에 몰아서 제공.
+- 지시를 무시하고 `<run_command>` 태그를 또 출력함 → skipRunCommand + cmdReadsRaw 분리.
+- 히스토리에 UI 알림("🖥️ [자동 실행]")이 남으면 다음 턴에 그대로 흉내냄 → strip 필수.
+- JSON에 없는 빈칸은 날조로 채움 → fields_only 지시 + 데이터 직접 제공이 이중 차단.
+- stock.py 출력에 이모지·특수문자 금지 (Windows cp949 크래시 → AI 날조 근본원인).
 
 ---
 
 ## 다음 세션 테스트 체크리스트 (집 PC에서 update.bat 후)
 
-먼저 터미널에서 도구 동작 확인 (C:\project_list\NA-stock-ai):
+먼저 터미널 직접 확인 (C:\project_list\NA-stock-ai):
 ```
-py macro.py                  → indicators + regime JSON
-py macro.py ^VIX             → VIX 단일
-py backtest.py AAPL          → MA크로스 전략 vs 단순보유
-py backtest.py AAPL rsi      → RSI 전략
-py stock.py IONQ             → earningsDate·dividendYield 포함 확인
-py sec.py AAPL               → 최근 공시 목록 + 원문 링크
-py sec.py AAPL financials    → XBRL 공식 재무 (매출·순이익·자산·EPS)
-py sec.py IONQ 10-Q          → 분기보고서만 필터
-py portfolio.py              → 보유종목 손익·액션 (portfolio.csv 시드됨)
-py screen.py value           → watchlist 저평가 랭킹
-py screen.py momentum        → watchlist 성장모멘텀 랭킹
+py macro.py                      → indicators + regime JSON
+py backtest.py IONQ              → MA크로스 전략 vs 단순보유
+py screen.py suggest quantum     → 양자 테마 랭킹 (fiftyTwoWeekHigh·marketCap 포함 확인)
+py portfolio.py                  → 보유종목 손익·action
 ```
-⚠️ sec.py·screen.py는 외부 서버 호출 — 첫 실행/다수 티커 시 느릴 수 있음.
 
-그 다음 VSIX 재설치 → Reload → 새 채팅에서 에이전트별 테스트:
-- [ ] 매크로분석가: "지금 시장 거시 환경 어때?" → macro.py 실행, VIX/금리/regime 인용
-- [ ] 센티먼트분석가: "지금 시장 심리 공포야 탐욕이야?" → VIX 기반 진단
-- [ ] 퀀트엔지니어: "AAPL MA크로스 전략 백테스트해줘" → 전략 vs 보유 수익률
-- [ ] 포트폴리오매니저: "IONQ 다음 실적 언제야?" → 2026-08-06 (지어내지 않음)
-- [ ] 펀더멘털분석가: "IONQ 섹터 특성 반영해서 밸류 봐줘" → 양자=P/S 잣대
-- [ ] 리서처: "AAPL 최근 공시 뭐 있어?" → sec.py 공식 공시 목록+링크
-- [ ] 리서처: "IONQ 공식 재무 보여줘" → sec.py financials (매출·순이익 출처:SEC)
-- [ ] ⭐보유관리: "내 포트폴리오 점검해줘" → portfolio.py, 손익·action·alerts
-- [ ] ⭐발굴: "저평가 종목 발굴해줘" → screen.py value 랭킹 → 상위 후보 심층분석 안내
-- [ ] 지식 인용: 각 응답에 📚 출처 표기 확인
+VSIX 재설치 → Reload → 새 채팅 연속 테스트:
+- [ ] "지금 시장 거시 환경 어때?" → [자동 실행] 1회, macro 분석
+- [ ] "IONQ 골든크로스 백테스트해줘" → [자동 실행] 1회, 전략 vs 보유 비교
+- [ ] "내 포트폴리오 점검해줘" → [자동 실행] 1회, 손익·action·alerts
+- [ ] "양자컴퓨터 종목 발굴해줘" → [자동 실행] 1회, 실제 필드만 인용 (파트너십 날조 없음)
+- [ ] "▶ py ..." 같은 stray 명령줄이 본문에 안 나타나는지 확인
 
 ### 두 핵심 용도 통합 시나리오 (최종 목표)
-- 발굴: "관심종목 중 살 만한 거 추천" → screen.py 랭킹 → 상위 1~2개 기술+펀더멘털+리스크 분석 → 진입가·손절·목표·비중 제시
-- 보유관리: "내 종목들 어때, 뭐 팔까" → portfolio.py → action 종목 우선 → 각 종목 매매전략_실행법 적용
+- 발굴: "관심종목 중 살 만한 거 추천" → screen.py 랭킹 → 상위 1~2개 기술+펀더멘털+리스크 분석 → 진입가·손절·목표·비중
+- 보유관리: "내 종목들 어때, 뭐 팔까" → portfolio.py → action 종목 우선 → 매매전략 적용
 
-문제 발견 시 패턴: 도구 단독은 정상인데 AI가 못 쓰면 → 페르소나/system.md 지시 강화.
-도구 자체가 틀리면 → .py 수정. (9B는 명령 하나만 도는 경향 → 핵심은 한 명령에 몰기.)
+문제 발견 시 패턴:
+- 도구 단독은 정상인데 AI가 못 쓰면 → 페르소나/system.md 지시 강화
+- 도구 자체가 틀리면 → .py 수정
+- 날조 발생하면 → forcedToolContext 지시 강화 + 해당 필드 도구에 추가

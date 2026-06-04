@@ -4,10 +4,11 @@
 
 ## 1. 구성
 
-- **본체**: VS Code 확장(connect-ai-lab.vsix) — Antigravity에 설치
+- **본체**: VS Code 확장(connect-ai-lab.vsix v3.0.2) — Antigravity에 설치
 - **두뇌(LLM)**: LM Studio + Qwen3.5-9B (포트 127.0.0.1:12345)
-- **데이터 도구**: stock.py / macro.py / backtest.py (워크스페이스에 위치)
+- **데이터 도구**: stock.py / macro.py / backtest.py / sec.py / portfolio.py / screen.py (워크스페이스에 위치)
 - **지식**: brain 폴더의 .md 파일들 (자동 인식)
+- **자동 라우팅**: "거시 환경·백테스트·포트폴리오·발굴" 질문 → 시스템이 명령 먼저 실행 후 분석
 
 ## 2. 업데이트 방법
 
@@ -60,9 +61,14 @@ py backtest.py AAPL rsi     # RSI 전략 백테스트
 py sec.py AAPL              # SEC 공시 목록 + 원문 링크
 py sec.py AAPL financials   # SEC 공식 재무 (매출·순이익·자산·EPS)
 py portfolio.py            # 보유종목 손익·손절·목표·매매액션
-py screen.py value         # 관심종목 저평가 랭킹 (watchlist.txt)
-py screen.py momentum      # 관심종목 성장모멘텀 랭킹
+py screen.py value                    # 관심종목 저평가 랭킹 (watchlist.txt)
+py screen.py momentum                 # 관심종목 성장모멘텀 랭킹
+py screen.py suggest quantum          # 양자컴퓨터 테마 자동 발굴
+py screen.py suggest ai momentum      # AI 테마 성장모멘텀 발굴
+py screen.py suggest                  # 지원 테마 목록 출력
 ```
+
+지원 테마: `quantum, ai, semiconductor, ev, biotech, defense, cloud, fintech, energy, clean, healthcare, consumer, crypto, space, robotics`
 
 설정 파일 (워크스페이스):
 - `portfolio.csv` — 보유 종목 (ticker,shares,avg_cost,stop,target)
@@ -78,8 +84,10 @@ py screen.py momentum      # 관심종목 성장모멘텀 랭킹
 
 ## 6. 핵심 안전장치
 
-- 모든 수치는 도구(yfinance) 실데이터만 인용 — 지어내지 않음.
+- **자동 라우팅(v3.x)**: 투자 키워드 감지 → AI가 답하기 **전에** 시스템이 도구를 실행 → 실데이터를 컨텍스트에 주입 → 날조 원천 차단.
+- 모든 수치는 도구(yfinance·SEC) 실데이터만 인용 — 지어내지 않음.
 - 계산(지표·포지션·백테스트)은 Python에서 끝내고 AI는 읽기만 → 산수 오류 차단.
+- screen.py 결과 해석 시 JSON에 있는 필드만 인용 — 파트너십·매출액·기술방식은 JSON에 없으면 안 씀.
 - 명령 실패 시 "확인 실패"라 말하고 재실행 — 날조 금지.
 - ⚠️ 투자자문 아님. 정보·교육 목적. 최종 판단·책임은 본인.
 
