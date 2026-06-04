@@ -59,9 +59,17 @@ VS Code 확장(connect-ai-lab.vsix)을 미국 주식 투자 분석 AI로 개조.
 
 ---
 
-## 현재 버전: 2.91.6
+## 현재 버전: 2.92.0+
 
-### 검증 완료
+### ⏳ 집 PC에서 테스트 대기 중 (v2.92.0+ 일괄)
+다음 것들은 코드/지식은 완성·푸시됐고, 집 PC에서 update.bat 후 테스트만 남음:
+- macro.py (매크로·센티먼트 분석가)
+- backtest.py (퀀트엔지니어)
+- 포트폴리오매니저 실적일 연결
+- 지식 3종 추가: 거시경제_해석법, 시장심리_지표, 섹터별_특징
+→ 테스트 체크리스트는 이 파일 맨 아래 "## 다음 세션 테스트 체크리스트" 참고.
+
+### 검증 완료 (집 PC 테스트 통과)
 - ✅ `py stock.py IONQ` → 실시간 가격·밸류에이션 정확 (beta·roe·목표가·실적일 포함)
 - ✅ `py stock.py IONQ hist` → RSI·MA·MACD·ATR 계산값 정확
 - ✅ `py stock.py IONQ risk [총자산] [위험%]` → 손절가·수량·비중·최대손실·R:R 사전계산 (USD)
@@ -90,20 +98,21 @@ VS Code 확장(connect-ai-lab.vsix)을 미국 주식 투자 분석 AI로 개조.
 ### Step 1 — stock.py 확장 ✅ 완료 (v2.91.1~2.91.6)
 베타·목표가·재무지표·실적일 추가, risk 모드 신설. 리스크매니저 완성.
 
-### Step 2 — macro.py 신규 ← 다음 여기
-VIX(`^VIX`), S&P500(`^GSPC`), 달러인덱스(`DX-Y.NYB`), 10년물 금리(`^TNX`), 환율(`KRW=X`) 조회.
-- 매크로분석가·센티먼트분석가 활성화
-- ⚠️ stock.py 교훈 적용: UTF-8 출력 강제, 이모지 금지, 계산은 Python에서.
+### Step 2 — macro.py 신규 ✅ 완료 (v2.92.0, 테스트 대기)
+VIX·S&P500·나스닥·다우·달러·10년물금리·환율·유가·금·BTC + state/regime 라벨.
+매크로분석가·센티먼트분석가 페르소나 연결. 거시·심리 지식 추가.
 
-### Step 3 — 공포탐욕지수 연결
-CNN Fear & Greed API (무료, 인증 없음).
-- 센티먼트분석가 완성
+### Step 3 — 백테스팅 ✅ 완료 (v2.92.0, 테스트 대기)
+backtest.py: MA크로스/RSI 전략, 룩어헤드 없음. 퀀트엔지니어 연결.
+(공포탐욕지수 CNN API는 보류 — 현재 VIX로 심리 대용. 필요시 추가.)
 
-### Step 4 — 종합 분석 흐름
-"IONQ 종합 분석해줘" → 기술분석가 + 펀더멘털분석가 + 리스크매니저 순서로 연계.
+### Step 4 — 종합 분석 흐름 (Solo Mode) ← 다음 여기
+"IONQ 종합 분석해줘" → CIO가 기술+펀더멘털+리스크+매크로 연계.
+👔 버튼(Solo Mode) ON 시 _handleCorporatePrompt 경로. extension.ts 수정 필요 →
+집 PC 테스트 동반 필수(위험). 신중히 접근.
 
 ### Step 5 — 브레인 템플릿 (6주차)
-종목 분석지·투자일지 brain 템플릿 생성.
+종목 분석지·투자일지 brain 템플릿. (지식 폴더에 템플릿 .md 추가 — 안전.)
 
 ---
 
@@ -114,11 +123,11 @@ CNN Fear & Greed API (무료, 인증 없음).
 | 기술분석가 | RSI, MA, MACD, ATR | ✅ 완료 | stock.py hist |
 | 펀더멘털분석가 | PER, EPS, 재무제표, 목표가 | ✅ 완료 | stock.py (확장) |
 | 리스크매니저 | 베타(β), ATR, 포지션사이징 | ✅ 완료 | stock.py risk |
-| 매크로분석가 | 금리, VIX, DXY, 환율 | ❌ 없음 | macro.py 신규 ← 다음 |
-| 센티먼트분석가 | VIX, 공포탐욕지수 | ❌ 없음 | CNN API (무료) |
-| 리서처 | 뉴스, SEC 공시 | 🟡 검색만 | SEC Edgar API |
-| 포트폴리오매니저 | 실적발표일, 배당일 | 🟡 stock.py에 있음 | (전용 흐름 필요) |
-| 퀀트엔지니어 | 히스토리 데이터 | ✅ hist | - |
+| 매크로분석가 | 금리, VIX, DXY, 환율 | ✅ 완료(테스트대기) | macro.py |
+| 센티먼트분석가 | VIX, 공포탐욕지수 | ✅ VIX 연결(테스트대기) | macro.py ^VIX |
+| 리서처 | 뉴스, SEC 공시 | 🟡 검색만 | SEC Edgar API (선택) |
+| 포트폴리오매니저 | 실적발표일, 배당일 | ✅ 완료(테스트대기) | stock.py |
+| 퀀트엔지니어 | 백테스팅 | ✅ 완료(테스트대기) | backtest.py |
 | 리포트작가 | 없음 (결과 종합) | ✅ | - |
 
 ---
@@ -140,3 +149,29 @@ CNN Fear & Greed API (무료, 인증 없음).
 2. 수치는 stock.py 결과만 인용, 절대 지어내지 않음
 3. 9B 모델 한계 고려 — 복잡한 런타임 워크플로우보다 페르소나에 규칙 직접 주입
 4. 면책고지 필수 (투자 책임은 사용자 본인)
+5. 로컬 도구(stock/macro/backtest.py) 출력에 이모지·특수문자 금지, UTF-8 강제
+6. 계산은 Python에서 끝내고 모델은 결과를 "읽어주기"만
+
+---
+
+## 다음 세션 테스트 체크리스트 (집 PC에서 update.bat 후)
+
+먼저 터미널에서 도구 동작 확인 (C:\project_list\NA-stock-ai):
+```
+py macro.py                  → indicators + regime JSON
+py macro.py ^VIX             → VIX 단일
+py backtest.py AAPL          → MA크로스 전략 vs 단순보유
+py backtest.py AAPL rsi      → RSI 전략
+py stock.py IONQ             → earningsDate·dividendYield 포함 확인
+```
+
+그 다음 VSIX 재설치 → Reload → 새 채팅에서 에이전트별 테스트:
+- [ ] 매크로분석가: "지금 시장 거시 환경 어때?" → macro.py 실행, VIX/금리/regime 인용
+- [ ] 센티먼트분석가: "지금 시장 심리 공포야 탐욕이야?" → VIX 기반 진단
+- [ ] 퀀트엔지니어: "AAPL MA크로스 전략 백테스트해줘" → 전략 vs 보유 수익률
+- [ ] 포트폴리오매니저: "IONQ 다음 실적 언제야?" → 2026-08-06 (지어내지 않음)
+- [ ] 펀더멘털분석가: "IONQ 섹터 특성 반영해서 밸류 봐줘" → 양자=P/S 잣대
+- [ ] 지식 인용: 각 응답에 📚 출처 표기 확인
+
+문제 발견 시 패턴: 도구 단독은 정상인데 AI가 못 쓰면 → 페르소나/system.md 지시 강화.
+도구 자체가 틀리면 → .py 수정. (9B는 명령 하나만 도는 경향 → 핵심은 한 명령에 몰기.)
