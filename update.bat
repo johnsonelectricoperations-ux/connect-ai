@@ -11,7 +11,10 @@ copy /Y C:\project_list\connect-ai\macro.py C:\project_list\NA-stock-ai\macro.py
 copy /Y C:\project_list\connect-ai\backtest.py C:\project_list\NA-stock-ai\backtest.py
 copy /Y C:\project_list\connect-ai\sec.py C:\project_list\NA-stock-ai\sec.py
 
-echo [3/4] Compiling extension...
+echo [3/4] Deploying agent skills to brain company folder...
+xcopy /E /I /Y "C:\project_list\connect-ai\agent-skills" "C:\project_list\ai_agent_antigravity\_company\_agents"
+
+echo [3b/4] Compiling extension...
 call npm run compile
 if errorlevel 1 goto :error
 
