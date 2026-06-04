@@ -19390,6 +19390,15 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                 }
             }
 
+            // 면책고지 강제화 (v3.0.8) — 투자 도구가 실행된 답변(forcedArgs)에
+            // 모델이 면책을 빠뜨렸으면 표준 문구를 자동으로 덧붙인다. system.md:110은
+            // 지침일 뿐 9B가 종종 누락 → 규제·법적 안전을 위해 프로그램적으로 보장.
+            if (forcedArgs && !/면책|투자\s*판단|책임은?\s*(사용자|본인|투자자)|정보\s*[·및]?\s*교육|투자자문/.test(aiMessage)) {
+                const disclaimer = `\n\n⚠️ **면책**: 본 분석은 정보·교육 목적이며 인가받은 투자자문이 아닙니다. 최종 투자 판단과 책임은 사용자 본인에게 있습니다.`;
+                aiMessage += disclaimer;
+                this._view.webview.postMessage({ type: 'streamChunk', value: disclaimer });
+            }
+
             // 모든 스트리밍(1차 및 2차)이 끝난 후, 박스 포장 완료
             this._view.webview.postMessage({ type: 'streamEnd' });
 
