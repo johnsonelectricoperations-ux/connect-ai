@@ -24,7 +24,8 @@ def analyst_extras(t):
     analyst 모드와 기본 모드 양쪽에서 재사용 (9B가 명령 하나만 써도 데이터 확보)."""
     out = {"recent_rating_changes": [], "ratings_latest_date": None,
            "ratings_days_old": None, "ratings_stale": None,
-           "recommendation_trend": []}
+           "recommendation_trend": [], "trend_direction": None,
+           "buy_ratio_pct": None}
     # 최근 등급 변경 이력
     latest_change_date = None
     try:
@@ -70,6 +71,28 @@ def analyst_extras(t):
                 })
     except Exception:
         pass
+
+    # 추세 방향·매수비율 미리 계산 (9B 산수·요약 오류 차단 — AI는 읽기만)
+    tr = out["recommendation_trend"]
+    if tr:
+        def bull_score(r):  # 매수(strongBuy+buy) - 매도(sell+strongSell)
+            return (r["strongBuy"] + r["buy"]) - (r["sell"] + r["strongSell"])
+
+        # 현재(0m) 매수비율 = (strongBuy+buy) / 전체 의견수
+        cur = tr[0]
+        total = cur["strongBuy"] + cur["buy"] + cur["hold"] + cur["sell"] + cur["strongSell"]
+        if total > 0:
+            out["buy_ratio_pct"] = round((cur["strongBuy"] + cur["buy"]) / total * 100, 1)
+
+        # 추세 방향: 현재(0m) vs 가장 오래된 기간 비교
+        oldest = tr[-1]
+        diff = bull_score(cur) - bull_score(oldest)
+        if diff > 0:
+            out["trend_direction"] = "improving"   # 매수 우위 강화
+        elif diff < 0:
+            out["trend_direction"] = "worsening"    # 매수 우위 약화
+        else:
+            out["trend_direction"] = "stable"
     return out
 
 
@@ -220,7 +243,8 @@ def main():
         out["note"] = ("recent_rating_changes=최근 등급변경(firm=증권사, action=up/down/init/main, from/to=등급). "
                        "ratings_stale=true면 등급변경 이력이 180일 이상 오래됨(ratings_days_old=경과일) → "
                        "'최근 변경'이라 말하지 말고 'X일 전 이력'으로 명시하고 신뢰도 낮음을 안내할 것. "
-                       "recommendation_trend=월별 의견분포(period 0m=현재,-1m=한달전...)는 비교적 최신. "
+                       "buy_ratio_pct=매수비율%(미리계산), trend_direction=improving/worsening/stable(미리계산) — "
+                       "그대로 쓰고 직접 산수·임의 판단 말 것. recommendation_trend은 원자료, 최신이라 신뢰 가능. "
                        "consensus.upside_pct=평균목표가 대비 상승여력%. "
                        "데이터 없으면 빈 배열 — 지어내지 말 것. 컨센서스는 참고지표일 뿐 매수신호 아님.")
         print(json.dumps(out, ensure_ascii=False))
@@ -399,10 +423,12 @@ def main():
     # (9B 모델이 analyst 서브명령을 안 쓰고 기본 명령만 써도 데이터 확보되도록)
     out.update(analyst_extras(t))
     out["note"] = ("targetMean/recommendation/numAnalysts=현재 애널리스트 컨센서스. "
-                   "recommendation_trend=월별 의견분포(period 0m=현재,-1m=한달전)로 개선/악화 추세 판단. "
+                   "buy_ratio_pct=매수(strongBuy+buy) 비율%(미리계산됨, 직접 산수 말 것). "
+                   "trend_direction=improving/worsening/stable(미리계산됨) — 이 값을 그대로 쓰고 추세를 임의 판단 말 것. "
+                   "recommendation_trend=월별 의견분포 원자료(period 0m=현재,-1m=한달전). "
                    "recent_rating_changes=증권사별 등급변경 이력. "
                    "ratings_stale=true면 등급변경이 ratings_days_old일 전이라 오래됨 → '최근 변경'이라 하지 말고 "
-                   "'X일 전 이력, 신뢰도 낮음'으로 명시(단 recommendation_trend은 최신이라 신뢰 가능). "
+                   "'X일 전 이력, 신뢰도 낮음'으로 명시(단 trend_direction/recommendation_trend은 최신이라 신뢰 가능). "
                    "roe/profitMargin/revenueGrowth/dividendYield는 소수값 → ×100 해서 %로. null이면 '데이터 미제공', 지어내지 말 것.")
     print(json.dumps(out, ensure_ascii=False))
 
