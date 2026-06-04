@@ -615,17 +615,22 @@ function runCommandCaptured(
         });
         let buf = '';
         let timedOut = false;
+        // v2.98 — 스트리밍 UTF-8 디코더. 이전엔 d.toString()을 청크마다 호출해
+        // 한글(3바이트)이 청크 경계에서 쪼개지면 깨졌음(macro/screen 등 큰 출력에서 발생).
+        // StringDecoder는 불완전한 멀티바이트 시퀀스를 다음 청크까지 버퍼링해 안전.
+        const { StringDecoder } = require('string_decoder');
+        const decoder = new StringDecoder('utf8');
         const append = (s: string) => {
             buf += s;
             // Hard cap so a runaway log never explodes memory
             if (buf.length > 30000) buf = buf.slice(-30000);
             onChunk(s);
         };
-        child.stdout?.on('data', (d: Buffer) => append(d.toString()));
+        child.stdout?.on('data', (d: Buffer) => append(decoder.write(d)));
         /* v2.89.50 — captureStream='stdout' 일 때 stderr는 무시. 스크립트가 진행 메시지·
            로그·DeprecationWarning을 stderr로 보내도 채팅창엔 안 새서 깔끔. */
         if (captureStream === 'both') {
-            child.stderr?.on('data', (d: Buffer) => append(d.toString()));
+            child.stderr?.on('data', (d: Buffer) => append(decoder.write(d)));
         }
         const killTimer = setTimeout(() => {
             timedOut = true;
@@ -641,6 +646,8 @@ function runCommandCaptured(
         }, timeoutMs);
         child.on('close', (code) => {
             clearTimeout(killTimer);
+            const tail = decoder.end();   // 버퍼에 남은 멀티바이트 마무리
+            if (tail) buf += tail;
             resolve({ exitCode: code ?? -1, output: buf.slice(-15000), timedOut });
         });
         child.on('error', (e) => {
@@ -19160,6 +19167,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                     this._postThinking({ type: 'answer_start' });
                 }
 
+                let followUpTokens = 0;   // v2.98 — 빈 응답 감지용
                 await new Promise<void>((resolve, reject) => {
                     const stream = followUpResponse.data;
                     let buffer = '';
@@ -19179,6 +19187,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                                 else token = json.message?.content || '';
 
                                 if (token) {
+                                    followUpTokens++;
                                     aiMessage += token;
                                     this._view!.webview.postMessage({ type: 'streamChunk', value: token });
                                     if (this._shouldEmitThinking()) {
@@ -19191,6 +19200,16 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                     stream.on('end', () => resolve());
                     stream.on('error', (err: any) => reject(err));
                 });
+
+                /* v2.98 — followUp이 토큰을 0개 반환하면(컨텍스트 초과/모델 침묵 등)
+                   명령줄만 찍히고 멈추던 문제. 도구 결과 원문을 그대로 보여줘서
+                   사용자가 최소한 데이터는 확인하게 하고, 침묵을 알린다. */
+                if (followUpTokens === 0 && cmdReads.length > 0) {
+                    const raw = fetchedContent.trim().slice(0, 4000);
+                    const fb = `\n\n> ⚠️ **[자동 해석 실패]** 모델이 결과 해석을 반환하지 않았습니다(컨텍스트 초과 가능성). 도구 실행 결과 원문:\n\n\`\`\`json\n${raw}\n\`\`\`\n\n새 대화에서 다시 질문하면 보통 해결됩니다.\n`;
+                    aiMessage += fb;
+                    this._view.webview.postMessage({ type: 'streamChunk', value: fb });
+                }
             }
 
             // 모든 스트리밍(1차 및 2차)이 끝난 후, 박스 포장 완료
