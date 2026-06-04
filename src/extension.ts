@@ -19150,13 +19150,25 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                 reqMessages.push({ role: 'assistant', content: cleanedResponse || '탐색을 진행 중입니다...' });
                 reqMessages.push({ role: 'user', content: `[SYSTEM: The following documents, web contents, and command outputs were retrieved by running your actions. Use ONLY these real results — do not invent numbers. If a COMMAND OUTPUT contains JSON, cite its actual values.]\n${fetchedContent}\n\nNow answer the user's question using the above results. Do NOT output <read_brain>, <read_url>, or <run_command> again. Answer directly and comprehensively in Korean.` });
 
+                /* v2.99 — followUp 컨텍스트 다이어트. 누적 대화가 길어지면 전체 히스토리를
+                   다 실어 보내다 16K 컨텍스트를 초과 → 모델이 빈 응답을 내고 멈추던 문제
+                   (한 채팅에서 macro→backtest→portfolio 연속 질문 시 2,3번째 실패).
+                   2차 분석엔 시스템 프롬프트 + 최근 몇 턴(원 질문·도구결과 주입 포함)만 있으면
+                   충분하므로 중간 히스토리를 잘라낸다. 단발 질문(짧은 히스토리)엔 영향 없음. */
+                let followUpMessages = reqMessages;
+                const MAX_FOLLOWUP_MSGS = 8;
+                if (reqMessages.length > MAX_FOLLOWUP_MSGS) {
+                    const head = reqMessages[0]?.role === 'system' ? [reqMessages[0]] : [];
+                    followUpMessages = [...head, ...reqMessages.slice(-(MAX_FOLLOWUP_MSGS - head.length))];
+                }
+
                 // 2차 스트리밍 시작 (followUp)
                 const followUpResponse = await axios.post(apiUrl, {
                     model: modelName || defaultModel,
-                    messages: reqMessages,
+                    messages: followUpMessages,
                     stream: true, // 스트리밍 활성화
-                    ...(isLMStudio 
-                        ? { max_tokens: 4096, temperature: this._temperature, top_p: this._topP } 
+                    ...(isLMStudio
+                        ? { max_tokens: 4096, temperature: this._temperature, top_p: this._topP }
                         : { options: { num_ctx: 8192, num_predict: 2048, temperature: this._temperature, top_p: this._topP, top_k: this._topK } }),
                 }, { timeout, responseType: 'stream', signal: this._abortController?.signal });
 
