@@ -19088,7 +19088,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                     const actionNote = detailTickers.length
                         ? `매매 액션이 필요한 종목(${detailTickers.join('·')})에 손절/포지션 데이터를 추가로 붙였다. 이 종목을 우선 다뤄라: STOP_BREACHED_sell=손절 검토, TARGET_HIT_take_profit=익절 검토, near_stop/target_watch=관찰. 각 종목에 "어디서·왜 팔지(또는 유지)"를 구체적으로 제시하라.`
                         : `action 플래그(hold 외)가 없으면 "지금 당장 매도/매수 시그널 없음 — 보유 유지"로 안내하라.`;
-                    forcedToolContext = `\n\n[보유 포트폴리오 점검 — 아래 실데이터(JSON)만 인용하라. 새 <run_command>를 출력하지 말 것. ${actionNote}\n🚫 환각 절대 금지: JSON에 있는 숫자만 사용하고, 없는 항목(뉴스·전망·목표가 등)은 지어내지 마라.\n📋 출력 구조: ① 전체 손익 요약(total_unrealized_pl) ② 액션 필요 종목(우선, 각 매매전략) ③ 나머지 보유 한 줄평. 한국어로만 작성.\n\n${forcedToolOutput}]`;
+                    forcedToolContext = `\n\n[보유 포트폴리오 점검 — 아래 실데이터(JSON)만 인용하라. 새 <run_command>를 출력하지 말 것. ${actionNote}\n🈲 언어 규칙: 반드시 한국어로만 작성하라. 중국어·한자·간체자(均未·分析·持仓 등)를 단 한 글자도 섞지 마라.\n🚫 환각 절대 금지: JSON에 있는 숫자만 사용하고, 없는 항목(뉴스·전망·목표가 등)은 지어내지 마라.\n📋 출력 구조: ① 전체 손익 요약(total_unrealized_pl) ② 액션 필요 종목(우선, 각 매매전략) ③ 나머지 보유 한 줄평. 한국어로만 작성.\n\n${forcedToolOutput}]`;
                     forcedToolNotice = `\n> 🖥️ **[자동 실행]** 포트폴리오 점검${detailTickers.length ? ` + 액션종목 ${detailTickers.join('·')} 손절·포지션` : ''}\n\n`;
                 }
             } else if (forcedArgs.startsWith('screen.py')) {
@@ -19129,7 +19129,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                     const verifyNote = topTickers.length
                         ? `상위 후보(${topTickers.join('·')})에 진입·손절·목표·비중 데이터를 추가했다. 이 후보를 심층 검증해 "지금 살 만한가"를 판단하고, 각 후보의 진입가·손절가·목표가·권장 비중을 구체적으로 제시하라.`
                         : `랭킹 결과만 요약하라.`;
-                    forcedToolContext = `\n\n[종목 발굴 + 검증 — 아래 실데이터(JSON)만 인용하라. 새 <run_command>를 출력하지 말 것. screen.py는 1차 객관 랭킹(추천이 아니라 후보 정렬)이다. ${verifyNote}\n🚫 환각 절대 금지: JSON에 있는 필드만 사용하라. 매출액·파트너십·기술방식·시장점유율 등 없는 정성정보를 지어내지 마라(특히 여러 종목에 같은 설명 복붙=명백한 날조).\n📋 출력 구조: ① 랭킹 요약(상위 3개 score·reasons) ② 상위 후보 1~2개 심층(진입가·손절가·목표가·권장 비중) ③ 한 줄 결론. 한국어로만 작성.\n\n${forcedToolOutput}]`;
+                    forcedToolContext = `\n\n[종목 발굴 + 검증 — 아래 실데이터(JSON)만 인용하라. 새 <run_command>를 출력하지 말 것. screen.py는 1차 객관 랭킹(추천이 아니라 후보 정렬)이다. ${verifyNote}\n🈲 언어 규칙: 반드시 한국어로만 작성하라. 중국어·한자·간체자(均未·持仓·分析 등)를 단 한 글자도 섞지 마라.\n🚫 환각 절대 금지: JSON에 있는 필드만 사용하라. 매출액·파트너십·기술방식·시장점유율 등 없는 정성정보를 지어내지 마라(특히 여러 종목에 같은 설명 복붙=명백한 날조).\n📋 출력 구조: ① 랭킹 요약(상위 3개 score·reasons) ② 상위 후보 1~2개 심층(진입가·손절가·목표가·권장 비중) ③ 한 줄 결론. 한국어로만 작성.\n\n${forcedToolOutput}]`;
                     forcedToolNotice = `\n> 🖥️ **[자동 실행]** 종목 발굴${topTickers.length ? ` + 상위후보 ${topTickers.join('·')} 검증` : ''}\n\n`;
                 }
             } else if (forcedArgs) {
