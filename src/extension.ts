@@ -18983,17 +18983,19 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             //     데이터를 미리 넣어주므로 모델은 한 번의 호출로 분석만 하면 됨.
             let forcedToolContext = '';
             let forcedToolNotice = '';
+            let forcedToolOutput = '';   // raw output — reused when model emits stray <run_command>
+            let forcedFullCmd = '';
             const forcedArgs = _detectInvestmentCommand(prompt);
             if (forcedArgs) {
-                const fullCmd = `${_pythonCmd()} ${forcedArgs}`;
+                forcedFullCmd = `${_pythonCmd()} ${forcedArgs}`;
                 const toolRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
                     || (() => { try { const d = getCompanyDir(); return d && fs.existsSync(d) ? d : undefined; } catch { return undefined; } })()
                     || process.cwd();
                 try {
-                    const r = await runCommandCaptured(fullCmd, toolRoot, () => { /* silent */ }, 5 * 60 * 1000);
-                    const outStr = (r.output || '').toString().slice(0, 8000);
-                    forcedToolContext = `\n\n[자동 실행된 도구 결과 — 반드시 이 실데이터(JSON)만 인용하라. 새 <run_command>를 출력하지 말고 아래 숫자로 바로 분석할 것. 값이 null이거나 error면 "데이터 확인 실패"라고 솔직히 답하고 지어내지 말 것]\n명령: ${fullCmd}\n출력:\n${outStr}`;
-                    forcedToolNotice = `\n> 🖥️ **[자동 실행]** \`${fullCmd}\`\n\n`;
+                    const r = await runCommandCaptured(forcedFullCmd, toolRoot, () => { /* silent */ }, 5 * 60 * 1000);
+                    forcedToolOutput = (r.output || '').toString().slice(0, 8000);
+                    forcedToolContext = `\n\n[자동 실행된 도구 결과 — 반드시 이 실데이터(JSON)만 인용하라. 새 <run_command>를 출력하지 말고 아래 숫자로 바로 분석할 것. 값이 null이거나 error면 "데이터 확인 실패"라고 솔직히 답하고 지어내지 말 것]\n명령: ${forcedFullCmd}\n출력:\n${forcedToolOutput}`;
+                    forcedToolNotice = `\n> 🖥️ **[자동 실행]** \`${forcedFullCmd}\`\n\n`;
                 } catch (e: any) {
                     forcedToolContext = `\n\n[자동 도구 실행 실패: ${e?.message || e}. "데이터 확인 실패"라고 솔직히 답하고 수치를 지어내지 말 것.]`;
                 }
@@ -19160,14 +19162,18 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                자동 후속 처리에 포함. 이전엔 run_command가 _executeActions에서 실행만 되고
                결과가 다음 턴 히스토리에만 들어가서, AI가 같은 답변에서 분석을 못 했음
                (예: `py stock.py IONQ` 만 찍히고 멈춤).
-               forcedArgs가 있을 때는 데이터가 이미 forcedToolContext에 주입됐으므로
-               모델이 <run_command>를 출력해도 재실행하지 않는다 — 이중 실행 및
-               followUp 루프 방지. */
-            const cmdReads = forcedArgs
-                ? []
-                : [...aiMessage.matchAll(/<(?:run_command|command|bash|terminal)>([\s\S]*?)<\/(?:run_command|command|bash|terminal)>/gi)];
+               forcedArgs가 있을 때도 cmdReads는 감지한다 — 단, 실제 재실행은 하지 않고
+               이미 가져온 forcedToolOutput을 fetchedContent에 주입해서 followUp을
+               정상 발동시킨다. cmdReads=[] 로 하면 followUp 자체가 안 돼서 모델이
+               <run_command> 출력 후 분석 없이 멈추는 문제가 있었음. */
+            const cmdReadsRaw = [...aiMessage.matchAll(/<(?:run_command|command|bash|terminal)>([\s\S]*?)<\/(?:run_command|command|bash|terminal)>/gi)];
+            /* forcedArgs 경로: 재실행 차단을 위해 cmdReads 자체는 비움.
+               대신 아래 fetchedContent 주입으로 followUp이 여전히 발동한다. */
+            const cmdReads = forcedArgs ? [] : cmdReadsRaw;
+            /* forcedArgs + stray run_command: 이미 가져온 결과를 재사용할지 여부 */
+            const needsForcedFollowUp = forcedArgs && forcedToolOutput && cmdReadsRaw.length > 0;
 
-            if (brainReads.length > 0 || urlReads.length > 0 || cmdReads.length > 0) {
+            if (brainReads.length > 0 || urlReads.length > 0 || cmdReads.length > 0 || needsForcedFollowUp) {
                 let fetchedContent = '';
                 let uiFeedbackStr = '';
                 
@@ -19226,6 +19232,13 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                     } catch (err: any) {
                         fetchedContent += `\n\n[COMMAND OUTPUT: ${cmd}] (FAILED: ${err.message})\n`;
                     }
+                }
+
+                /* needsForcedFollowUp: 모델이 stray <run_command>를 출력했으나 cmdReads=[]로
+                   재실행을 차단한 경우. forcedToolOutput(사전 실행 결과)을 fetchedContent에
+                   직접 주입해 followUp이 해당 데이터를 받아 분석하게 한다. */
+                if (needsForcedFollowUp) {
+                    fetchedContent += `\n\n[COMMAND OUTPUT: ${forcedFullCmd}] (exit 0, pre-fetched)\n${forcedToolOutput}\n`;
                 }
 
                 const cleanedResponse = aiMessage.replace(/<read_brain>[\s\S]*?<\/read_brain>/g, '')
