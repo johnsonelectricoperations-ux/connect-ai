@@ -69,7 +69,7 @@ VS Code 확장(connect-ai-lab.vsix)을 미국 주식 투자 분석 AI로 개조.
 
 ---
 
-## 현재 버전: 3.0.5
+## 현재 버전: 3.0.6
 
 ### v3.x 변경사항 — 결정적 투자 도구 라우팅 (forcedArgs 시스템)
 
@@ -132,7 +132,11 @@ VS Code 확장(connect-ai-lab.vsix)을 미국 주식 투자 분석 AI로 개조.
   - CIO 통합 지침 주입: ①결론 ②펀더멘털 ③기술 ④리스크 ⑤거시영향 ⑥종합의견+면책.
   - 단일 `[자동 실행] 종합 분석 — TK 펀더멘털·기술·리스크 + 거시` notice 1회 표시.
   - downstream(cmdReads 억제·skipRunCommand)은 forcedArgs 진위값만 보므로 sentinel로 호환.
-- 15개 인라인 단위테스트 통과 (종합 7건 티커 추출 + 비대상 8건 null). **집 PC 라이브 검증 대기.**
+- 15개 인라인 단위테스트 통과 (종합 7건 티커 추출 + 비대상 8건 null).
+- **v3.0.6 핫픽스**: 종합 블록이 `isAborted()`(=_handleCorporatePrompt 전용 헬퍼)를
+  호출 → _handlePrompt엔 없어 "isAborted is not defined" 런타임 오류.
+  `this._abortController?.signal.aborted`로 교체. (교훈: forcedArgs 블록은
+  _handlePrompt 컨텍스트라 corporate 헬퍼 사용 불가.)
 
 ### 로컬 도구 6종 (전부 워크스페이스에 복사됨 via update.bat)
 - `stock.py`  — 시세·밸류·재무·목표가·실적일 + hist(지표) + risk(포지션사이징) + analyst

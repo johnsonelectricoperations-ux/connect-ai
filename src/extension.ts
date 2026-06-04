@@ -19036,7 +19036,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                 const parts: string[] = [];
                 const ranLabels: string[] = [];
                 for (const s of steps) {
-                    if (isAborted()) break;
+                    if (this._abortController?.signal.aborted) break;
                     try {
                         const r = await runCommandCaptured(s.cmd, toolRoot, () => { /* silent */ }, 5 * 60 * 1000);
                         const out = (r.output || '').toString().slice(0, 4000);
