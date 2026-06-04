@@ -1,0 +1,7 @@
+# 관심종목 후보 (한 줄에 티커 하나, # 는 주석)
+# screen.py 가 이 목록을 객관 지표로 랭킹합니다.
+IONQ
+RGTI
+QBTS
+NVDA
+AMD

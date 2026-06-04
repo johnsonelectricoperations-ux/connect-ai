@@ -10,9 +10,15 @@ copy /Y C:\project_list\connect-ai\stock.py C:\project_list\NA-stock-ai\stock.py
 copy /Y C:\project_list\connect-ai\macro.py C:\project_list\NA-stock-ai\macro.py
 copy /Y C:\project_list\connect-ai\backtest.py C:\project_list\NA-stock-ai\backtest.py
 copy /Y C:\project_list\connect-ai\sec.py C:\project_list\NA-stock-ai\sec.py
+copy /Y C:\project_list\connect-ai\portfolio.py C:\project_list\NA-stock-ai\portfolio.py
+copy /Y C:\project_list\connect-ai\screen.py C:\project_list\NA-stock-ai\screen.py
 
 echo [3/4] Deploying agent skills to brain company folder...
 xcopy /E /I /Y "C:\project_list\connect-ai\agent-skills" "C:\project_list\ai_agent_antigravity\_company\_agents"
+
+echo Seeding portfolio.csv / watchlist.txt (only if missing - your data is preserved)...
+if not exist "C:\project_list\NA-stock-ai\portfolio.csv" copy /Y "C:\project_list\connect-ai\portfolio.csv.example" "C:\project_list\NA-stock-ai\portfolio.csv"
+if not exist "C:\project_list\NA-stock-ai\watchlist.txt" copy /Y "C:\project_list\connect-ai\watchlist.txt.example" "C:\project_list\NA-stock-ai\watchlist.txt"
 
 echo [3b/4] Compiling extension...
 call npm run compile
