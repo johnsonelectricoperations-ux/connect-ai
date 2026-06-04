@@ -19159,8 +19159,13 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             /* v2.90.4 — run_command도 read_url처럼 "실행 → 결과 받아 AI가 이어서 분석"하도록
                자동 후속 처리에 포함. 이전엔 run_command가 _executeActions에서 실행만 되고
                결과가 다음 턴 히스토리에만 들어가서, AI가 같은 답변에서 분석을 못 했음
-               (예: `py stock.py IONQ` 만 찍히고 멈춤). */
-            const cmdReads = [...aiMessage.matchAll(/<(?:run_command|command|bash|terminal)>([\s\S]*?)<\/(?:run_command|command|bash|terminal)>/gi)];
+               (예: `py stock.py IONQ` 만 찍히고 멈춤).
+               forcedArgs가 있을 때는 데이터가 이미 forcedToolContext에 주입됐으므로
+               모델이 <run_command>를 출력해도 재실행하지 않는다 — 이중 실행 및
+               followUp 루프 방지. */
+            const cmdReads = forcedArgs
+                ? []
+                : [...aiMessage.matchAll(/<(?:run_command|command|bash|terminal)>([\s\S]*?)<\/(?:run_command|command|bash|terminal)>/gi)];
 
             if (brainReads.length > 0 || urlReads.length > 0 || cmdReads.length > 0) {
                 let fetchedContent = '';
