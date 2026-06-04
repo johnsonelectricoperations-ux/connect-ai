@@ -1,26 +1,20 @@
 #!/usr/bin/env python3
 # Connect AI · 종목 발굴/스크리닝 도구 (yfinance 기반)
 #
-# 관심종목 리스트(watchlist.txt)를 훑어 전략별로 점수를 매겨 추천 순위를 낸다.
-# 진짜 "발굴"은 후보군이 있어야 하므로: 사용자가 watchlist.txt 에 후보를 모으고
-# (또는 AI가 후보를 제안하고) 이 도구가 실데이터로 객관적 랭킹을 매긴다.
-#
-# watchlist.txt 형식 (워크스페이스, 한 줄에 티커 하나, # 주석 허용):
-#   IONQ
-#   RGTI
-#   QBTS
-#
 # 사용법:
-#   py screen.py                  → watchlist.txt 를 value 전략으로 스크리닝
-#   py screen.py momentum         → 성장모멘텀 전략
-#   py screen.py value            → 저평가/반등 전략 (기본)
-#   py screen.py AAPL MSFT NVDA   → 파일 대신 인자로 티커 직접 지정
+#   py screen.py                        → watchlist.txt 를 value 전략으로 스크리닝
+#   py screen.py value                  → 저평가/반등 전략
+#   py screen.py momentum               → 성장모멘텀 전략
+#   py screen.py AAPL MSFT NVDA         → 티커 직접 지정
+#   py screen.py suggest quantum        → 테마 유니버스 자동 발굴 (value 전략)
+#   py screen.py suggest ai momentum    → 테마 유니버스 + 전략 지정
+#   py screen.py suggest               → 사용 가능한 테마 목록 출력
 #
 # 전략:
 #   value    : 52주 저점 근접 + RSI 낮음(과매도) + P/S 낮음 → 반등/저평가 후보
 #   momentum : 정배열 추세 + 매출성장 + RSI 적정(과열 아님) → 성장 모멘텀 후보
 #
-# 출력 JSON (점수 내림차순). 교훈 적용: UTF-8 강제, 이모지 금지, 계산은 Python.
+# 출력 JSON (점수 내림차순). UTF-8 강제, 이모지 금지, 계산은 Python.
 
 import sys, json, os
 
@@ -136,30 +130,77 @@ def score_momentum(m):
     return round(s, 1), reasons
 
 
+# 테마별 내장 유니버스 (suggest 모드용)
+UNIVERSES = {
+    "quantum":     ["IONQ", "RGTI", "QBTS", "QUBT", "IBM", "GOOGL", "MSFT"],
+    "ai":          ["NVDA", "AMD", "INTC", "MSFT", "GOOGL", "META", "AMZN", "TSM", "AVGO", "QCOM"],
+    "ev":          ["TSLA", "RIVN", "LCID", "NIO", "XPEV", "LI", "GM", "F", "CHPT", "BLNK"],
+    "biotech":     ["MRNA", "BNTX", "REGN", "BIIB", "VRTX", "ILMN", "CRSP", "EDIT", "NTLA", "BEAM"],
+    "defense":     ["LMT", "RTX", "NOC", "GD", "BA", "HII", "LDOS", "CACI", "SAIC", "KTOS"],
+    "semiconductor": ["NVDA", "AMD", "INTC", "TSM", "AVGO", "QCOM", "AMAT", "LRCX", "KLAC", "MRVL"],
+    "cloud":       ["AMZN", "MSFT", "GOOGL", "CRM", "SNOW", "DDOG", "NET", "ZS", "MDB", "TEAM"],
+    "fintech":     ["V", "MA", "PYPL", "SQ", "SOFI", "AFRM", "UPST", "COIN", "HOOD", "NU"],
+    "energy":      ["XOM", "CVX", "COP", "SLB", "EOG", "PXD", "OXY", "MPC", "VLO", "PSX"],
+    "clean":       ["ENPH", "FSLR", "RUN", "SEDG", "NEE", "BEP", "PLUG", "BLDP", "CWEN", "AES"],
+    "healthcare":  ["UNH", "JNJ", "ABT", "TMO", "DHR", "MDT", "SYK", "BSX", "EW", "ISRG"],
+    "consumer":    ["AMZN", "COST", "WMT", "TGT", "HD", "LOW", "NKE", "SBUX", "MCD", "YUM"],
+    "crypto":      ["COIN", "MSTR", "MARA", "RIOT", "HUT", "CLSK", "BTBT", "WGMI", "HOOD", "SQ"],
+    "space":       ["RKLB", "ASTS", "LUNR", "MNTS", "SPCE", "SATL", "KTOS", "AJRD", "LMT", "NOC"],
+    "robotics":    ["ISRG", "ABB", "FANUC", "BRKS", "NXPI", "TER", "ONTO", "CGNX", "IRBT", "NVDA"],
+}
+
+
 def main():
     args = sys.argv[1:]
     strat = "value"
     tickers = []
+    suggest_mode = False
+    suggest_theme = None
 
-    # 첫 인자가 전략명이면 분리, 아니면 티커로 간주
-    if args and args[0].lower() in ("value", "momentum"):
-        strat = args[0].lower()
+    # suggest 모드 감지
+    if args and args[0].lower() == "suggest":
+        suggest_mode = True
         args = args[1:]
-    if args:
-        tickers = [a.upper() for a in args]
-    else:
-        path = "watchlist.txt"
-        if not os.path.exists(path):
+        # 테마 인자 (전략명 제외)
+        remaining = []
+        for a in args:
+            if a.lower() in ("value", "momentum"):
+                strat = a.lower()
+            elif a.lower() in UNIVERSES:
+                suggest_theme = a.lower()
+            else:
+                remaining.append(a)
+
+        if suggest_theme is None:
+            # 테마 없이 suggest만 쓰면 목록 출력
             print(json.dumps({
-                "error": "watchlist.txt 가 없습니다. 워크스페이스에 후보 티커를 한 줄씩 넣어주세요.",
-                "template": "IONQ\nRGTI\nQBTS",
+                "available_themes": list(UNIVERSES.keys()),
+                "usage": "py screen.py suggest [theme] [value|momentum]",
+                "example": "py screen.py suggest quantum momentum",
             }, ensure_ascii=False))
             return
-        try:
-            tickers = load_watchlist(path)
-        except Exception as e:
-            print(json.dumps({"error": f"watchlist 읽기 실패: {e}"}, ensure_ascii=False))
-            return
+
+        tickers = UNIVERSES[suggest_theme]
+    else:
+        # 첫 인자가 전략명이면 분리, 아니면 티커로 간주
+        if args and args[0].lower() in ("value", "momentum"):
+            strat = args[0].lower()
+            args = args[1:]
+        if args:
+            tickers = [a.upper() for a in args]
+        else:
+            path = "watchlist.txt"
+            if not os.path.exists(path):
+                print(json.dumps({
+                    "error": "watchlist.txt 가 없습니다. 워크스페이스에 후보 티커를 한 줄씩 넣어주세요.",
+                    "template": "IONQ\nRGTI\nQBTS",
+                }, ensure_ascii=False))
+                return
+            try:
+                tickers = load_watchlist(path)
+            except Exception as e:
+                print(json.dumps({"error": f"watchlist 읽기 실패: {e}"}, ensure_ascii=False))
+                return
 
     if not tickers:
         print(json.dumps({"error": "스크리닝할 티커가 없습니다."}, ensure_ascii=False))
@@ -186,12 +227,16 @@ def main():
 
     results.sort(key=lambda x: x["score"], reverse=True)
 
-    print(json.dumps({
+    out = {
         "strategy": strat,
         "ranked": results,
         "failed": failed,
         "note": "score 높을수록 해당 전략에 부합. reasons=가점 근거. 이것은 1차 스크리닝(객관 지표 랭킹)이며, 상위 후보는 반드시 기술/펀더멘털 심층분석으로 검증할 것. 추천이 아니라 후보 정렬.",
-    }, ensure_ascii=False))
+    }
+    if suggest_mode and suggest_theme:
+        out["theme"] = suggest_theme
+        out["universe_size"] = len(tickers)
+    print(json.dumps(out, ensure_ascii=False))
 
 
 if __name__ == "__main__":
