@@ -78,9 +78,13 @@ def fetch_metrics(yf, ticker):
             "ticker": ticker, "price": price, "rsi14": rsi14(closes),
             "ma20": ma20, "ma50": ma50,
             "pos52": pos52,
+            "fiftyTwoWeekHigh": round(high52, 2) if high52 else None,
+            "fiftyTwoWeekLow": round(low52, 2) if low52 else None,
+            "marketCap": info.get("marketCap"),
             "priceToSales": info.get("priceToSalesTrailing12Months"),
             "revenueGrowth": info.get("revenueGrowth"),
             "forwardPE": info.get("forwardPE"),
+            "trailingPE": info.get("trailingPE"),
             "beta": info.get("beta"),
             "name": info.get("shortName") or info.get("longName"),
             "trend": "up" if (ma50 and ma20 > ma50) else "down" if ma50 else None,
@@ -232,6 +236,7 @@ def main():
         "ranked": results,
         "failed": failed,
         "note": "score 높을수록 해당 전략에 부합. reasons=가점 근거. 이것은 1차 스크리닝(객관 지표 랭킹)이며, 상위 후보는 반드시 기술/펀더멘털 심층분석으로 검증할 것. 추천이 아니라 후보 정렬.",
+        "fields_only": "이 JSON에 있는 필드(price·rsi14·ma20·ma50·pos52·52주고저·marketCap·priceToSales·revenueGrowth·forwardPE·trailingPE·beta·trend)만 인용하라. 매출액·파트너십·기술방식(trapped ion 등)·시장점유율 같은 정성 정보는 이 도구가 제공하지 않으므로 절대 지어내지 말 것. 없는 값은 'N/A' 또는 '데이터 미제공'으로 표기.",
     }
     if suggest_mode and suggest_theme:
         out["theme"] = suggest_theme

@@ -18994,7 +18994,7 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                 try {
                     const r = await runCommandCaptured(forcedFullCmd, toolRoot, () => { /* silent */ }, 5 * 60 * 1000);
                     forcedToolOutput = (r.output || '').toString().slice(0, 8000);
-                    forcedToolContext = `\n\n[자동 실행된 도구 결과 — 반드시 이 실데이터(JSON)만 인용하라. 새 <run_command>를 출력하지 말고 아래 숫자로 바로 분석할 것. 값이 null이거나 error면 "데이터 확인 실패"라고 솔직히 답하고 지어내지 말 것]\n명령: ${forcedFullCmd}\n출력:\n${forcedToolOutput}`;
+                    forcedToolContext = `\n\n[자동 실행된 도구 결과 — 반드시 이 실데이터(JSON)만 인용하라. 새 <run_command>를 출력하지 말고(명령줄을 본문에 다시 적지도 말 것) 아래 숫자로 바로 분석할 것. 값이 null이거나 error면 "데이터 확인 실패"라고 솔직히 답하고 지어내지 말 것.\n🚫 환각 절대 금지: 아래 JSON에 들어있는 필드·숫자만 사용하라. JSON에 없는 항목(매출액·전년대비 성장률·시가총액·52주 최고/저·MACD·파트너십·기술 방식·시장 점유율 등)을 사실처럼 지어내지 마라. JSON에 없으면 표·문장에 아예 넣지 말거나 "데이터 미제공"으로 표기하라. 여러 종목에 같은 정성 설명을 복붙하는 것은 명백한 날조다.]\n명령: ${forcedFullCmd}\n출력:\n${forcedToolOutput}`;
                     forcedToolNotice = `\n> 🖥️ **[자동 실행]** \`${forcedFullCmd}\`\n\n`;
                 } catch (e: any) {
                     forcedToolContext = `\n\n[자동 도구 실행 실패: ${e?.message || e}. "데이터 확인 실패"라고 솔직히 답하고 수치를 지어내지 말 것.]`;
@@ -19351,8 +19351,8 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                 aiMessage += reportMsg;
             }
 
-            // 저장용: AI 응답 기록
-            this._displayMessages.push({ text: this._stripActionTags(aiMessage), role: 'ai' });
+            // 저장용: AI 응답 기록 (액션 태그 + 흉내낸 명령줄 제거, 정당한 알림은 유지)
+            this._displayMessages.push({ text: this._stripStrayCommandEcho(this._stripActionTags(aiMessage)), role: 'ai' });
 
             // 📚 Citation badges + 🎬 final source highlight
             const allBrainReads = [...aiMessage.matchAll(/<read_brain>([\s\S]*?)<\/read_brain>/g)]
@@ -22041,8 +22041,20 @@ ${catalog.map((c, i) => `${i + 1}. agent=${c.agentId} tool=${c.tool} — ${c.des
        히스토리에 남으면 작은 모델이 다음 턴에 그대로 흉내내 중복 명령줄을 출력하므로,
        히스토리 저장 직전에 떼어낸다. */
     private _stripForcedToolNotice(text: string): string {
-        return text
+        /* 히스토리(모델 컨텍스트)용: 정당한 "[자동 실행]" 알림까지 모두 제거.
+           안 그러면 다음 턴에 모델이 이 패턴을 보고 흉내냄. */
+        return this._stripStrayCommandEcho(text)
             .replace(/^\s*>\s*🖥️\s*\*\*\[(?:자동 실행|명령 실행)\]\*\*.*$/gim, '')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+    }
+
+    /* 모델이 본문에 흉내낸 명령줄만 제거: "▶ py ...", "$ py ...", 단독 "py -3 stock.py ...".
+       정당한 "[자동 실행]" UI 알림은 건드리지 않으므로 display 저장본에도 안전하게 쓴다. */
+    private _stripStrayCommandEcho(text: string): string {
+        return text
+            .replace(/^\s*(?:▶|\$)\s*(?:py|python3?)\b.*$/gim, '')
+            .replace(/^\s*(?:py|python3?)\s+(?:-3\s+)?\w+\.py\b.*$/gim, '')
             .replace(/\n{3,}/g, '\n\n')
             .trim();
     }
