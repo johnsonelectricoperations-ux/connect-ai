@@ -1,7 +1,7 @@
 # Connect AI — 미국 주식 투자 AI 진행 기록
 
 > 이 파일은 세션 간 컨텍스트 보존용. 새 세션 시작 시 이 파일을 먼저 읽을 것.
-> 마지막 업데이트: 2026-06-04 (v3.0.3 — 4개 라우팅 경로 검증 완료)
+> 마지막 업데이트: 2026-06-05 (v3.1.5 — 텐배거 전략 추가)
 
 ---
 
@@ -69,7 +69,7 @@ VS Code 확장(connect-ai-lab.vsix)을 미국 주식 투자 분석 AI로 개조.
 
 ---
 
-## 현재 버전: 3.1.4
+## 현재 버전: 3.1.5
 
 ### v3.x 변경사항 — 결정적 투자 도구 라우팅 (forcedArgs 시스템)
 
@@ -208,8 +208,26 @@ VS Code 확장(connect-ai-lab.vsix)을 미국 주식 투자 분석 AI로 개조.
 - 모든 파일이 기존 규격 준수(담당 에이전트 헤더 + stock.py/macro.py 필드 연결 + 날조 금지 원칙).
 - update.bat이 brain 폴더로 자동 배포 → 다음 분석부터 컨텍스트 인식.
 
+**v3.1.5 — 텐배거 전략 추가**
+- **목표**: 피터 린치 스타일 소형·고성장 텐배거 후보 발굴. yfinance 제약(전 시장 스캔 불가) 안에서
+  정량 스코어링만으로 구현. Vector DB·유료 API 없이 우리 시스템에 통합.
+- **screen.py** `score_tenbagger()`: 6개 정량 기준
+  - 시총 $300M-$5B (텐배거 가능 소형주): +3점
+  - 매출성장 40%+/25%+/10%+ 구간별 가점
+  - Rule of 40 (매출성장% + 이익률% >= 40): +3점
+  - 부채비율(D/E) 낮을수록 가점, 고부채 페널티
+  - 52주 위치 <=40% (아직 덜 오름): +2점
+  - RSI 40-65 적정: +1점
+- **fetch_metrics()**: `profitMargins`·`debtToEquity` 필드 추가 (sanity check 포함)
+- **UNIVERSES["tenbagger"]**: 소형·중형 고성장 20개 크로스섹터 유니버스
+  (IONQ·RGTI·RKLB·ASTS·SOFI·AFRM·UPST·HIMS·CELH·DUOL·SOUN·RXRX·TMDX·NUVL·GTLB·BILL·AXON·KTOS·APP·SMCI)
+- **사용법**: `py screen.py tenbagger` / `py screen.py suggest tenbagger`
+- **extension.ts 라우팅**: "텐배거·10배·tenbagger" → `screen.py suggest tenbagger` 자동 라우팅.
+  tenbagger 결과에 전용 모델 지침 주입 (정성 날조 차단, 점수 의미 설명).
+- 단위테스트 5개 통과. **집 PC 라이브 검증 대기.**
+
 > 🎯 두 핵심 용도(발굴→추천, 보유관리→매매전략) 통합 흐름 + 종합 분석 + 면책 강제화 완성.
-> 데이터 sanity check + 지식팩 21종으로 분석 기반 강화. 남은 것은 집 PC 라이브 검증.
+> 데이터 sanity check + 지식팩 21종 + 텐배거 전략으로 발굴 기능 강화. 남은 것은 집 PC 라이브 검증.
 
 ### 로컬 도구 6종 (전부 워크스페이스에 복사됨 via update.bat)
 - `stock.py`  — 시세·밸류·재무·목표가·실적일 + hist(지표) + risk(포지션사이징) + analyst
@@ -351,6 +369,7 @@ VSIX 재설치 → Reload → 새 채팅 연속 테스트:
 - [ ] "IONQ 골든크로스 백테스트해줘" → [자동 실행] 1회, 전략 vs 보유 비교
 - [ ] "내 포트폴리오 점검해줘" → [자동 실행] 1회, 손익·action·alerts
 - [ ] "양자컴퓨터 종목 발굴해줘" → [자동 실행] 1회, 실제 필드만 인용 (파트너십 날조 없음)
+- [ ] "텐배거 후보 찾아줘" → [자동 실행] screen.py suggest tenbagger, score·reasons 정상 (정성 날조 없음)
 - [ ] "▶ py ..." 같은 stray 명령줄이 본문에 안 나타나는지 확인
 - [x] (v3.0.7) "IONQ 종합 분석해줘" → [자동 실행] 1회, 6섹션 정상, 날조 없음, 중국어 없음 ✅
 
