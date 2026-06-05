@@ -680,7 +680,7 @@ function _detectInvestmentCommand(prompt: string): string | null {
     const hasBacktest = /백테스트|backtest|골든\s*크로스|골든크로스|데드\s*크로스|데드크로스|전략\s*검증|전략검증|수익률\s*시뮬|시뮬레이션|ma\s*크로스|크로스\s*전략|과거.*통했|과거.*수익률/.test(lp);
     const wantsRsi = /rsi/.test(lp);
     const hasPortfolio = /포트폴리오\s*점검|내\s*포트|보유\s*종목|내\s*종목|뭐\s*팔|뭘\s*팔|손익\s*점검|보유\s*현황|포트폴리오\s*현황/.test(lp);
-    const hasScreen = /종목\s*발굴|발굴해|발굴\s*해|스크리닝|스크린|저평가\s*종목|살\s*만한|살만한|종목\s*추천|후보\s*찾|종목\s*골라/.test(lp);
+    const hasScreen = /종목\s*발굴|발굴해|발굴\s*해|스크리닝|스크린|저평가\s*종목|살\s*만한|살만한|종목\s*추천|후보\s*찾|종목\s*골라|텐배거|10배|tenbagger|ten.?bagger/.test(lp);
     const hasMacro = /거시|매크로|macro|시황|시장\s*환경|시장환경|증시\s*환경|공포지수|vix|위험\s*회피|시장\s*심리|시장심리|달러인덱스|dxy/.test(lp);
     const hasRisk = /손절|리스크\s*관리|포지션\s*사이징|비중\s*얼마|얼마나\s*사|몇\s*주\s*사|몇주\s*사|손실\s*한도|스탑로스|스톱로스|스탑\s*어디|진입\s*수량|매수\s*수량|atr|r:r|rr비율/.test(lp);
     // hasChart: RSI·볼린저·지지·저항·캔들 등 기술분석 전반을 포함.
@@ -704,6 +704,17 @@ function _detectInvestmentCommand(prompt: string): string | null {
     if (hasBacktest && ticker) return wantsRsi ? `backtest.py ${ticker} rsi` : `backtest.py ${ticker}`;
     if (hasPortfolio) return `portfolio.py`;
     if (hasScreen) {
+        // 텐배거 키워드 → tenbagger 전략으로 직접 라우팅
+        if (/텐배거|10배|tenbagger|ten.?bagger/.test(lp)) {
+            const tbTheme = /모멘텀|momentum/.test(lp) ? 'momentum' : 'tenbagger';
+            // 특정 섹터 테마를 지정했으면 그 유니버스에 tenbagger 전략 적용
+            for (const [k, v] of Object.entries(THEMES)) {
+                if (lp.includes(k)) return `screen.py suggest ${v} tenbagger`;
+            }
+            return tbTheme === 'tenbagger'
+                ? `screen.py suggest tenbagger`
+                : `screen.py suggest tenbagger momentum`;
+        }
         const mode = /모멘텀|momentum|성장/.test(lp) ? 'momentum' : 'value';
         for (const [k, v] of Object.entries(THEMES)) {
             if (lp.includes(k)) return `screen.py suggest ${v} ${mode}`;
@@ -19129,7 +19140,11 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                     const verifyNote = topTickers.length
                         ? `상위 후보(${topTickers.join('·')})에 진입·손절·목표·비중 데이터를 추가했다. 이 후보를 심층 검증해 "지금 살 만한가"를 판단하고, 각 후보의 진입가·손절가·목표가·권장 비중을 구체적으로 제시하라.`
                         : `랭킹 결과만 요약하라.`;
-                    forcedToolContext = `\n\n[종목 발굴 + 검증 — 아래 실데이터(JSON)만 인용하라. 새 <run_command>를 출력하지 말 것. screen.py는 1차 객관 랭킹(추천이 아니라 후보 정렬)이다. ${verifyNote}\n🈲 언어 규칙: 반드시 한국어로만 작성하라. 중국어·한자·간체자(均未·持仓·分析 등)를 단 한 글자도 섞지 마라.\n🚫 환각 절대 금지: JSON에 있는 필드만 사용하라. 매출액·파트너십·기술방식·시장점유율 등 없는 정성정보를 지어내지 마라(특히 여러 종목에 같은 설명 복붙=명백한 날조).\n📋 출력 구조: ① 랭킹 요약(상위 3개 score·reasons) ② 상위 후보 1~2개 심층(진입가·손절가·목표가·권장 비중) ③ 한 줄 결론. 한국어로만 작성.\n\n${forcedToolOutput}]`;
+                    const isTenbagger = forcedArgs.includes('tenbagger');
+                    const stratNote = isTenbagger
+                        ? `이 결과는 텐배거(10배 후보) 스크리닝이다. 점수는 시총($300M-$5B)·매출성장(30%+)·Rule of 40·부채·52주 위치를 정량 계산한 것이다. 정성 요소(경제적 해자·경영진·TAM)는 이 도구가 제공하지 않으므로 지어내지 마라. JSON에 있는 필드(score·reasons·marketCap·revenueGrowth·profitMargins·debtToEquity·pos52 등)만 인용하라.`
+                        : `screen.py는 1차 객관 랭킹(추천이 아니라 후보 정렬)이다.`;
+                    forcedToolContext = `\n\n[종목 발굴 + 검증 — 아래 실데이터(JSON)만 인용하라. 새 <run_command>를 출력하지 말 것. ${stratNote} ${verifyNote}\n🈲 언어 규칙: 반드시 한국어로만 작성하라. 중국어·한자·간체자(均未·持仓·分析 등)를 단 한 글자도 섞지 마라.\n🚫 환각 절대 금지: JSON에 있는 필드만 사용하라. 매출액·파트너십·기술방식·시장점유율 등 없는 정성정보를 지어내지 마라(특히 여러 종목에 같은 설명 복붙=명백한 날조).\n📋 출력 구조: ① 랭킹 요약(상위 3개 score·reasons) ② 상위 후보 1~2개 심층(진입가·손절가·목표가·권장 비중) ③ 한 줄 결론. 한국어로만 작성.\n\n${forcedToolOutput}]`;
                     forcedToolNotice = `\n> 🖥️ **[자동 실행]** 종목 발굴${topTickers.length ? ` + 상위후보 ${topTickers.join('·')} 검증` : ''}\n\n`;
                 }
             } else if (forcedArgs) {
