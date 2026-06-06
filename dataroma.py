@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-# Connect AI · Dataroma 슈퍼인베스터 13F 헬퍼
+# Connect AI · Dataroma 슈퍼인베스터 최근 활동 헬퍼
 #
 # 사용법:
-#   py dataroma.py AAPL          → AAPL 보유 슈퍼인베스터 목록 + 전체 매수/매도 합산
-#   py dataroma.py IONQ          → 보유자 없으면 {"holders": [], "summary": {...}}
-#   py dataroma.py --top 20      → 슈퍼인베스터 전원 공통 보유 상위 20 종목
+#   py dataroma.py AAPL          → AAPL 관련 슈퍼인베스터 최근 활동
+#   py dataroma.py IONQ          → 활동 없으면 {"holders": [], "summary": {...}}
+#   py dataroma.py --top 20      → 최근 분기 가장 많이 거래된 상위 20 종목
 #
-# 목적: 피터 린치·워런 버핏·척 아크만 등 검증된 투자자가 보유 중인 종목을
+# 목적: 피터 린치·워런 버핏 등 검증된 투자자가 최근 분기에 사고 판 종목을
 #       텐배거 발굴 보조 검증 소스로 활용.
-#       "슈퍼인베스터 3명+ 보유" = 고급 검증 시그널.
+#       "슈퍼인베스터 3명+ 최근 매수" = 고급 검증 시그널.
 #
-# 데이터: Dataroma.com (무료, 13F 기반, 분기별 업데이트)
+# 데이터: Dataroma.com allact.php (무료, 13F 기반, 분기별 업데이트)
+#         stock.php는 JS 렌더링 필요 → allact.php(최근 활동 전체) 사용.
 # 외부 라이브러리 없이 stdlib만 사용.
 # 실패 시 {"error": ...}. AI는 error/null이면 날조 금지.
 
@@ -24,34 +25,25 @@ except Exception:
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                   "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
+    "Accept-Encoding": "gzip, deflate",
     "Referer": "https://www.dataroma.com/",
     "Connection": "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
 }
 
 _BASE = "https://www.dataroma.com"
+_ALLACT_URL = f"{_BASE}/m/allact.php?typ=a"
 
 
-def _http_get(url, timeout=15):
+def _http_get(url, timeout=20):
     req = urllib.request.Request(url, headers=_HEADERS)
     with urllib.request.urlopen(req, timeout=timeout) as r:
         raw = r.read()
         try:
-            import gzip, zlib
-            enc = r.info().get("Content-Encoding", "")
-            if enc == "gzip":
+            import gzip
+            if r.info().get("Content-Encoding") == "gzip":
                 raw = gzip.decompress(raw)
-            elif enc == "deflate":
-                raw = zlib.decompress(raw)
-            elif enc == "br":
-                try:
-                    import brotli
-                    raw = brotli.decompress(raw)
-                except ImportError:
-                    pass
         except Exception:
             pass
         return raw.decode("utf-8", errors="replace")
@@ -61,173 +53,85 @@ def _unescape(s):
     return html_mod.unescape(s).strip()
 
 
+def _strip_tags(s):
+    return _unescape(re.sub(r'<[^>]+>', '', s))
+
+
 # ─────────────────────────────────────────────────────────────
-# 1. 슈퍼인베스터 목록 조회
+# allact.php 파싱
+# HTML 구조:
+#   <tr>
+#     <td class="firm"><a href="...">Manager Name</a></td>
+#     <td class="period">Q1 2026</td>
+#     <td class="sym">
+#       <div ...>
+#         <a class="buy|sell|add|reduce" href="/m/activity.php?sym=TICKER&typ=a">TICKER</a>
+#         <div class="tooltip_container">...</div>
+#       </div>
+#     </td>
+#     ...
+#   </tr>
 # ─────────────────────────────────────────────────────────────
 
-def _fetch_managers():
-    """Dataroma 매니저 목록 페이지에서 {id: name} dict 반환."""
-    url = f"{_BASE}/m/managers.php"
+def _fetch_allact():
+    """allact.php 전체 파싱 → 행 목록.
+
+    각 행: {firm, period, tickers: [{ticker, action}]}
+    실패 시 None.
+    """
     try:
-        html = _http_get(url)
-    except Exception:
-        return {}
-
-    # <a href="m/holdings.php?m=BRK">Berkshire Hathaway</a>
-    mgr = {}
-    for m in re.finditer(
-        r'href=["\']m/holdings\.php\?m=([^"\'&]+)["\'][^>]*>(.*?)</a>',
-        html, re.IGNORECASE | re.DOTALL
-    ):
-        mid = m.group(1).strip()
-        name = _unescape(re.sub(r'<[^>]+>', '', m.group(2)))
-        if mid and name:
-            mgr[mid] = name
-    return mgr
-
-
-# ─────────────────────────────────────────────────────────────
-# 2. 특정 종목 보유 슈퍼인베스터 조회
-# ─────────────────────────────────────────────────────────────
-
-def _fetch_stock_holders(ticker):
-    """Dataroma 종목 페이지 → 보유 매니저 목록."""
-    url = f"{_BASE}/m/stock.php?s={ticker.upper()}"
-    try:
-        html = _http_get(url)
+        html = _http_get(_ALLACT_URL)
     except Exception:
         return None
 
-    holders = []
+    rows = []
+    for tr_m in re.finditer(r'<tr[^>]*>([\s\S]*?)</tr>', html, re.IGNORECASE):
+        tr_html = tr_m.group(1)
 
-    # 보유 매니저 테이블 파싱 — <tr>...</tr> 전체를 추출 (속성 유무 무관)
-    rows = re.findall(
-        r'<tr[^>]*>([\s\S]*?)</tr>',
-        html, re.IGNORECASE
-    )
-
-    for row in rows:
-        cells = re.findall(r'<td[^>]*>(.*?)</td>', row, re.IGNORECASE | re.DOTALL)
-        if len(cells) < 5:
+        # firm 셀
+        firm_m = re.search(r'<td[^>]*class=["\']firm["\'][^>]*>([\s\S]*?)</td>', tr_html, re.IGNORECASE)
+        if not firm_m:
+            continue
+        firm = _strip_tags(firm_m.group(1))
+        if not firm:
             continue
 
-        # 첫 번째 셀에 매니저 링크
-        name_m = re.search(r'<a[^>]*>(.*?)</a>', cells[0], re.IGNORECASE | re.DOTALL)
-        if not name_m:
-            continue
-        name = _unescape(re.sub(r'<[^>]+>', '', name_m.group(1)))
-        if not name or len(name) < 3:
-            continue
+        # period 셀
+        period_m = re.search(r'<td[^>]*class=["\']period["\'][^>]*>([\s\S]*?)</td>', tr_html, re.IGNORECASE)
+        period = _strip_tags(period_m.group(1)) if period_m else ""
 
-        mgr_id_m = re.search(r'[?&]m=([^&"\']+)', cells[0])
-        mgr_id = mgr_id_m.group(1).strip() if mgr_id_m else ""
+        # sym 셀들 — 각 셀에 ticker 링크
+        tickers = []
+        for sym_m in re.finditer(r'<td[^>]*class=["\']sym["\'][^>]*>([\s\S]*?)</td>', tr_html, re.IGNORECASE):
+            sym_html = sym_m.group(1)
+            # <a class="buy|sell|add|reduce" href="...sym=TICKER...">TICKER</a>
+            for a_m in re.finditer(
+                r'<a[^>]*class=["\']([^"\']+)["\'][^>]*href=["\'][^"\']*sym=([A-Z]{1,5})[^"\']*["\'][^>]*>([^<]+)</a>',
+                sym_html, re.IGNORECASE
+            ):
+                action_cls = a_m.group(1).strip().lower()
+                ticker = a_m.group(2).strip().upper()
+                if ticker:
+                    tickers.append({"ticker": ticker, "action": action_cls})
 
-        def _clean(s):
-            return _unescape(re.sub(r'<[^>]+>', '', s)).replace(',', '').replace('$', '').strip()
+        if tickers:
+            rows.append({"firm": firm, "period": period, "tickers": tickers})
 
-        pct_str = _clean(cells[1])
-        shares_str = _clean(cells[2])
-        value_str = _clean(cells[3])
-        period_str = _clean(cells[4])
-        action_str = _clean(cells[5]) if len(cells) > 5 else ""
-
-        try:
-            pct = float(pct_str.replace('%', '')) if pct_str and pct_str != "N/A" else None
-        except ValueError:
-            pct = None
-        try:
-            shares = int(float(shares_str)) if shares_str and shares_str.lstrip('-').replace('.', '').isdigit() else None
-        except (ValueError, OverflowError):
-            shares = None
-        try:
-            value = int(float(value_str)) if value_str and value_str.lstrip('-').replace('.', '').isdigit() else None
-        except (ValueError, OverflowError):
-            value = None
-
-        holders.append({
-            "manager_id": mgr_id,
-            "manager": name,
-            "portfolio_pct": pct,
-            "shares": shares,
-            "value_usd": value,
-            "period": period_str,
-            "action": action_str,
-        })
-
-    return holders
+    return rows if rows else None
 
 
 # ─────────────────────────────────────────────────────────────
-# 3. 슈퍼인베스터 공통 상위 보유 종목 조회
-# ─────────────────────────────────────────────────────────────
-
-def _fetch_aggregated(limit=20):
-    """Dataroma 집계 페이지(aggregated.php) → 상위 종목 랭킹."""
-    url = f"{_BASE}/m/aggregated.php"
-    try:
-        html = _http_get(url)
-    except Exception:
-        return None
-
-    stocks = []
-    rows = re.findall(
-        r'<tr[^>]*>([\s\S]*?)</tr>',
-        html, re.IGNORECASE
-    )
-
-    for row in rows:
-        cells = re.findall(r'<td[^>]*>(.*?)</td>', row, re.IGNORECASE | re.DOTALL)
-        if len(cells) < 4:
-            continue
-
-        def _c(s):
-            return _unescape(re.sub(r'<[^>]+>', '', s)).replace(',', '').strip()
-
-        ticker_m = re.search(r'[?&]s=([A-Z]{1,5})', cells[0])
-        if not ticker_m:
-            # 첫 셀 텍스트에서 티커 추출
-            ticker_raw = _c(cells[0]).split()[0] if _c(cells[0]) else ""
-            if not re.match(r'^[A-Z]{1,5}$', ticker_raw):
-                continue
-            ticker = ticker_raw
-        else:
-            ticker = ticker_m.group(1)
-
-        name = _c(cells[1]) if len(cells) > 1 else ""
-
-        try:
-            num_holders = int(_c(cells[2])) if len(cells) > 2 and _c(cells[2]).isdigit() else None
-        except ValueError:
-            num_holders = None
-
-        try:
-            pct_str = _c(cells[3]).replace('%', '') if len(cells) > 3 else ""
-            pct = float(pct_str) if pct_str else None
-        except ValueError:
-            pct = None
-
-        if not ticker:
-            continue
-        stocks.append({
-            "ticker": ticker,
-            "name": name,
-            "num_holders": num_holders,
-            "avg_portfolio_pct": pct,
-        })
-
-    # limit 적용
-    return stocks[:limit] if stocks else stocks
-
-
-# ─────────────────────────────────────────────────────────────
-# 4. 공개 API
+# 공개 API
 # ─────────────────────────────────────────────────────────────
 
 def fetch_holders(ticker):
-    """특정 종목의 슈퍼인베스터 보유 현황.
+    """특정 종목의 슈퍼인베스터 최근 활동.
 
     반환: {
-        ticker, holders: [...], summary: {
+        ticker, holders: [
+            {firm, period, action}
+        ],
+        summary: {
             total_holders, buy_add_count, reduce_sell_count,
             latest_period, signal
         }
@@ -235,16 +139,27 @@ def fetch_holders(ticker):
     실패 시 None (graceful).
     """
     try:
-        holders = _fetch_stock_holders(ticker)
-        if holders is None:
+        rows = _fetch_allact()
+        if rows is None:
             return None
 
-        buy_add = sum(1 for h in holders if re.search(r'buy|add', h.get("action", ""), re.I))
-        reduce_sell = sum(1 for h in holders if re.search(r'reduce|sell', h.get("action", ""), re.I))
+        tk = ticker.upper().strip()
+        holders = []
+        for row in rows:
+            for t in row["tickers"]:
+                if t["ticker"] == tk:
+                    holders.append({
+                        "firm": row["firm"],
+                        "period": row["period"],
+                        "action": t["action"],
+                    })
+                    break  # 같은 행에서 같은 종목 중복 방지
+
+        buy_add = sum(1 for h in holders if h["action"] in ("buy", "add"))
+        reduce_sell = sum(1 for h in holders if h["action"] in ("reduce", "sell"))
         periods = [h["period"] for h in holders if h.get("period")]
         latest_period = periods[0] if periods else None
 
-        # 신호 판단
         n = len(holders)
         if n >= 5:
             signal = "strong_conviction"
@@ -256,7 +171,7 @@ def fetch_holders(ticker):
             signal = "no_holder"
 
         return {
-            "ticker": ticker.upper(),
+            "ticker": tk,
             "holders": holders,
             "summary": {
                 "total_holders": n,
@@ -271,22 +186,45 @@ def fetch_holders(ticker):
 
 
 def fetch_top_stocks(limit=20):
-    """슈퍼인베스터 공통 상위 보유 종목 목록.
+    """최근 분기 슈퍼인베스터 활동 기준 상위 종목.
 
-    반환: {stocks: [...], count: int}
+    반환: {stocks: [{ticker, count, buy_count, sell_count}], count: int}
     실패 시 None.
     """
     try:
-        stocks = _fetch_aggregated(limit)
-        if stocks is None:
+        rows = _fetch_allact()
+        if rows is None:
             return None
+
+        from collections import Counter
+        total_c = Counter()
+        buy_c = Counter()
+        sell_c = Counter()
+        for row in rows:
+            for t in row["tickers"]:
+                tk = t["ticker"]
+                total_c[tk] += 1
+                if t["action"] in ("buy", "add"):
+                    buy_c[tk] += 1
+                elif t["action"] in ("reduce", "sell"):
+                    sell_c[tk] += 1
+
+        stocks = []
+        for tk, cnt in total_c.most_common(limit):
+            stocks.append({
+                "ticker": tk,
+                "count": cnt,
+                "buy_count": buy_c.get(tk, 0),
+                "sell_count": sell_c.get(tk, 0),
+            })
+
         return {"stocks": stocks, "count": len(stocks)}
     except Exception:
         return None
 
 
 # ─────────────────────────────────────────────────────────────
-# 5. CLI
+# CLI
 # ─────────────────────────────────────────────────────────────
 
 def main():
@@ -308,13 +246,14 @@ def main():
         result = fetch_top_stocks(limit)
         if not result:
             print(json.dumps(
-                {"error": "Dataroma 집계 조회 실패 — 네트워크 점검"},
+                {"error": "Dataroma allact.php 조회 실패 — 네트워크 점검"},
                 ensure_ascii=False))
             return
         result["note"] = (
-            "슈퍼인베스터 13F 공통 보유 상위 종목. "
-            "num_holders=보유 매니저 수. avg_portfolio_pct=평균 포트폴리오 비중(%). "
-            "분기별 업데이트(13F 신고 주기). 최신 보유가 아닐 수 있음. "
+            "슈퍼인베스터 최근 분기 활동 기준 상위 종목(allact.php). "
+            "count=해당 종목 등장 매니저 수. buy_count=매수/추가 매니저 수. "
+            "sell_count=매도/축소 매니저 수. "
+            "13F 분기 신고 기반 — 최근 분기 이전 활동은 포함되지 않음. "
             "null이면 데이터 미제공 — 지어내지 말 것."
         )
         print(json.dumps(result, ensure_ascii=False))
@@ -324,17 +263,19 @@ def main():
     result = fetch_holders(ticker)
     if result is None:
         print(json.dumps(
-            {"error": f"{ticker} Dataroma 조회 실패 — 네트워크 또는 미상장 종목 확인"},
+            {"error": f"{ticker} Dataroma 조회 실패 — 네트워크 오류"},
             ensure_ascii=False))
         return
 
     result["note"] = (
-        "슈퍼인베스터 13F 보유 현황. holders=보유 매니저 목록. "
-        "portfolio_pct=해당 매니저 포트폴리오 내 비중(%). "
-        "action=최근 분기 액션(Buy/Add/Reduce/Sell). "
+        "슈퍼인베스터 최근 분기 활동(allact.php 기준). "
+        "holders=해당 종목을 거래한 매니저 목록. "
+        "action: buy=신규매수, add=추가매수, reduce=축소, sell=매도. "
         "signal: strong_conviction=5명+, multi_holder=3~4명, "
-        "single_holder=1~2명, no_holder=보유자 없음. "
-        "분기별 업데이트(13F 신고 주기). null이면 데이터 미제공 — 지어내지 말 것."
+        "single_holder=1~2명, no_holder=활동 없음. "
+        "13F 분기 신고 기반 — 직전 분기 이전 활동은 포함되지 않음. "
+        "no_holder여도 과거 보유자가 있을 수 있음. "
+        "null이면 데이터 미제공 — 지어내지 말 것."
     )
     print(json.dumps(result, ensure_ascii=False))
 
