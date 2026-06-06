@@ -1,0 +1,14 @@
+yfinance>=0.2.30
+duckdb>=1.0.0
+vectorbt>=0.26.0
+alphalens-reloaded>=0.4.3
+pandas>=2.0.0
+numpy>=1.24.0
+scipy>=1.10.0
+pyarrow>=14.0.0
+requests>=2.31.0
+plotly>=5.18.0
+matplotlib>=3.7.0
+tqdm>=4.65.0
+Jinja2>=3.1.0
+statsmodels>=0.14.0
