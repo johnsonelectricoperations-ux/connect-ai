@@ -256,6 +256,49 @@ def test_macrotrends_bonus():
 
 
 # ─────────────────────────────────────────────
+# 10. Dataroma 슈퍼인베스터 보유 보너스
+# ─────────────────────────────────────────────
+def test_dataroma_bonus():
+    base = {
+        "marketCap": 500_000_000,
+        "revenueGrowth": 0.20,
+        "profitMargins": 0.05,
+        "debtToEquity": 0.3,
+        "pos52": 50,
+        "rsi14": 55,
+        "is_micro": False,
+    }
+    s_base, _ = score_tenbagger(base)
+
+    # strong_conviction → +3
+    s_sc, r_sc = score_tenbagger({**base, "dt_signal": "strong_conviction"})
+    check("DT strong_conviction: +3", round(s_sc - s_base, 1) == 3.0, f"diff={round(s_sc-s_base,1)}")
+    check("DT strong_conviction reasons 포함", any("strong_conviction" in r for r in r_sc), f"reasons={r_sc}")
+
+    # multi_holder → +2
+    s_mh, r_mh = score_tenbagger({**base, "dt_signal": "multi_holder"})
+    check("DT multi_holder: +2", round(s_mh - s_base, 1) == 2.0, f"diff={round(s_mh-s_base,1)}")
+    check("DT multi_holder reasons 포함", any("multi_holder" in r for r in r_mh), f"reasons={r_mh}")
+
+    # single_holder → +1
+    s_sh, r_sh = score_tenbagger({**base, "dt_signal": "single_holder"})
+    check("DT single_holder: +1", round(s_sh - s_base, 1) == 1.0, f"diff={round(s_sh-s_base,1)}")
+
+    # no_holder → 변동 없음
+    s_nh, _ = score_tenbagger({**base, "dt_signal": "no_holder"})
+    check("DT no_holder: 변동 없음", s_nh == s_base, f"base={s_base} no_holder={s_nh}")
+
+    # dt_signal 없음 → 변동 없음
+    s_nd, _ = score_tenbagger(base)
+    check("DT 없음: 변동 없음", s_nd == s_base, f"base={s_base} no_dt={s_nd}")
+
+    # strong_conviction + MT 강한성장 조합 → 누적 적용
+    mt_strong = {"consecutive_growth_years": 5, "cagr_5yr": 0.32, "positive_growth_years": 8, "total_years": 9}
+    s_combo, _ = score_tenbagger({**base, "dt_signal": "strong_conviction", "mt_revenue": mt_strong})
+    check("DT+MT 조합: base보다 큰 점수", s_combo > s_sc and s_combo > s_base, f"combo={s_combo} sc={s_sc} base={s_base}")
+
+
+# ─────────────────────────────────────────────
 # 실행
 # ─────────────────────────────────────────────
 def test_version():
@@ -263,8 +306,8 @@ def test_version():
     parts = SCORING_VERSION.split(".")
     check("SCORING_VERSION 형식 X.Y.Z", len(parts) == 3 and all(p.isdigit() for p in parts),
           SCORING_VERSION)
-    check("SCORING_VERSION >= 1.1.0",
-          tuple(int(p) for p in parts) >= (1, 1, 0), SCORING_VERSION)
+    check("SCORING_VERSION >= 1.2.0",
+          tuple(int(p) for p in parts) >= (1, 2, 0), SCORING_VERSION)
 
 
 if __name__ == "__main__":
@@ -278,6 +321,7 @@ if __name__ == "__main__":
     run("7. RSI14 계산", test_rsi)
     run("8. value/momentum 전략", test_value_momentum)
     run("9. Macrotrends 성장 지속성 보너스", test_macrotrends_bonus)
+    run("10. Dataroma 슈퍼인베스터 보너스", test_dataroma_bonus)
 
     total = PASS + FAIL
     print(f"\n{'='*40}")

@@ -1,7 +1,7 @@
 # Connect AI — 미국 주식 투자 AI 진행 기록
 
 > 이 파일은 세션 간 컨텍스트 보존용. 새 세션 시작 시 이 파일을 먼저 읽을 것.
-> 마지막 업데이트: 2026-06-05 (v3.1.5 — 텐배거 전략 추가)
+> 마지막 업데이트: 2026-06-06 (v3.1.6 — Macrotrends 10년 재무 역사 연동)
 
 ---
 
@@ -207,6 +207,13 @@ VS Code 확장(connect-ai-lab.vsix)을 미국 주식 투자 분석 AI로 개조.
   - `경기사이클_섹터로테이션` — 4국면별 주도 섹터
 - 모든 파일이 기존 규격 준수(담당 에이전트 헤더 + stock.py/macro.py 필드 연결 + 날조 금지 원칙).
 - update.bat이 brain 폴더로 자동 배포 → 다음 분석부터 컨텍스트 인식.
+
+**v3.1.6 — Macrotrends 10년 재무 역사 연동 (SCORING v1.1.0)**
+- `macrotrends.py` 신규: `fetch_history(ticker)` — 매출/순이익/EPS/FCF 연간 데이터,
+  CAGR 3/5/10yr, 연속성장연수, 성장 일관성 반환 (stdlib만, 네트워크 실패 시 graceful None)
+- `screen.py score_tenbagger` 항목 7 추가: Macrotrends 성장 지속성 보너스/페널티
+- SCORING_VERSION 1.0.0 → 1.1.0, SCORING.md v1.1.0 업데이트
+- `test_screen.py` 항목 9 추가 → 36/36 PASS
 
 **v3.1.5 — 텐배거 전략 추가**
 - **목표**: 피터 린치 스타일 소형·고성장 텐배거 후보 발굴. yfinance 제약(전 시장 스캔 불가) 안에서

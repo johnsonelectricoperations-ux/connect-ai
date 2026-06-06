@@ -1,6 +1,6 @@
 # 스코어링 알고리즘 명세
 
-> 현재 버전: **v1.1.0**
+> 현재 버전: **v1.2.0**
 > 파일: `screen.py` — `SCORING_VERSION` 상수와 항상 동기화.
 > 항목·가중치·임계값 변경 시 버전 올리고 아래 변경이력 추가.
 
@@ -41,7 +41,13 @@
 
 > 항목 7은 `mt_revenue` 키가 제공될 때만 적용. `macrotrends.py`의 `fetch_history()["revenue"]` 결과를 전달.
 
-**이론 최대점수 (MT 포함):** 3+4+3+2+2+1+4 = **19점**
+| 8 | Dataroma 슈퍼인베스터 | 5명+ 보유 (strong_conviction) | +3 |
+| 8 | Dataroma 슈퍼인베스터 | 3~4명 보유 (multi_holder) | +2 |
+| 8 | Dataroma 슈퍼인베스터 | 1~2명 보유 (single_holder) | +1 |
+
+> 항목 8은 `dt_signal` 키가 제공될 때만 적용. `dataroma.py`의 `fetch_holders()["summary"]["signal"]` 값을 전달.
+
+**이론 최대점수 (MT+DT 포함):** 3+4+3+2+2+1+4+3 = **22점**
 
 ---
 
@@ -95,6 +101,11 @@ score가 높아도 IR·재무제표 직접 확인 필수.
 
 ## 변경 이력
 
+### v1.2.0 (2026-06-06)
+- tenbagger 항목 8 추가: Dataroma 슈퍼인베스터 13F 보유 보너스
+  - strong_conviction (5명+): +3 / multi_holder (3~4명): +2 / single_holder (1~2명): +1
+- `SCORING_VERSION` → 1.2.0
+
 ### v1.1.0 (2026-06-06)
 - tenbagger 항목 7 추가: Macrotrends 10년 성장 지속성 보너스/페널티
   - consecutive_growth_years ≥5: +2, ≥3: +1
@@ -111,7 +122,7 @@ score가 높아도 IR·재무제표 직접 확인 필수.
 
 ---
 
-## 다음 버전 예정 (v1.2.0)
+## 다음 버전 예정 (v1.3.0)
 
-- Dataroma 슈퍼인베스터 13F 보유 보너스
 - 극소형주 전용 보조 스코어 항목 검토
+- 실적 서프라이즈(EPS beat %) 보너스 검토

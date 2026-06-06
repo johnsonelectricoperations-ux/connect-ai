@@ -24,7 +24,7 @@ import sys, json, os
 
 # 스코어링 알고리즘 버전 — docs/investment/SCORING.md와 항상 동기화.
 # 항목·가중치·임계값 변경 시 반드시 버전 올리고 SCORING.md 변경이력 추가.
-SCORING_VERSION = "1.1.0"
+SCORING_VERSION = "1.2.0"
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -267,6 +267,18 @@ def score_tenbagger(m):
                 s -= 1; reasons.append(f'Macrotrends 5yr 매출 역성장 {round(cagr5*100,1)}%')
         if total_yrs >= 5 and pos_yrs / total_yrs < 0.5:
             s -= 1; reasons.append(f'Macrotrends 성장 일관성 낮음 ({pos_yrs}/{total_yrs}년)')
+
+    # 8. Dataroma 슈퍼인베스터 보유 보너스 (선택적 — dt_signal 있을 때만)
+    # fetch_holders()["summary"]["signal"] 값을 m["dt_signal"]로 전달.
+    dt = m.get("dt_signal")
+    if dt:
+        if dt == "strong_conviction":
+            s += 3; reasons.append('슈퍼인베스터 5명+ 보유 (strong_conviction)')
+        elif dt == "multi_holder":
+            s += 2; reasons.append('슈퍼인베스터 3~4명 보유 (multi_holder)')
+        elif dt == "single_holder":
+            s += 1; reasons.append('슈퍼인베스터 1~2명 보유 (single_holder)')
+        # no_holder → 점수 변동 없음
 
     return round(s, 1), reasons
 
