@@ -142,58 +142,12 @@ def _market_cap_text(mc):
     return neg + body
 
 
-def main():
-    if len(sys.argv) < 2:
-        print(json.dumps({"error": "ticker 필요. 예: py kis.py AAPL"}, ensure_ascii=False))
-        return
-    ticker = sys.argv[1].upper().strip()
-    forced_excd = sys.argv[2].upper().strip() if len(sys.argv) > 2 else None
-
-    appkey, appsecret, env = _load_creds()
-    if not appkey or not appsecret:
-        print(json.dumps({"error": "KIS 자격증명 없음. 환경변수 KIS_APP_KEY/KIS_APP_SECRET "
-                          "또는 kis_config.json 설정 필요."}, ensure_ascii=False))
-        return
-    domain = _DOMAINS.get(env, _DOMAINS["prod"])
-
-    try:
-        token = _get_token(appkey, appsecret, domain)
-    except urllib.error.HTTPError as e:
-        print(json.dumps({"error": f"KIS 토큰 HTTP 오류 {e.code}: {e.reason}"}, ensure_ascii=False))
-        return
-    except Exception as e:
-        print(json.dumps({"error": f"KIS 토큰 발급 실패: {e}"}, ensure_ascii=False))
-        return
-
-    # 거래소 탐색: 지정되면 그것만, 아니면 NAS→NYS→AMS 순서로.
-    exchanges = [forced_excd] if forced_excd else _US_EXCHANGES
-    raw, used_excd = None, None
-    try:
-        for ex in exchanges:
-            raw = _price_detail(domain, token, appkey, appsecret, ex, ticker)
-            if raw is not None:
-                used_excd = ex
-                break
-    except urllib.error.HTTPError as e:
-        print(json.dumps({"error": f"KIS 시세 HTTP 오류 {e.code}: {e.reason}"}, ensure_ascii=False))
-        return
-    except urllib.error.URLError as e:
-        print(json.dumps({"error": f"KIS 연결 실패: {e}. 네트워크 확인."}, ensure_ascii=False))
-        return
-    except Exception as e:
-        print(json.dumps({"error": f"KIS 시세 조회 실패: {e}"}, ensure_ascii=False))
-        return
-
-    if raw is None:
-        print(json.dumps({"error": f"{ticker}를 한투 해외시세에서 찾지 못함 "
-                          "(미국 상장 티커인지, 거래소 코드 확인)."}, ensure_ascii=False))
-        return
-
-    # 정규화 — stock.py와 같은 키로 맞춰 교차검증을 쉽게 한다.
-    # 필드 매핑(KIS 현재가상세): last=현재가, perx=PER, pbrx=PBR, epsx=EPS,
-    #   bpsx=BPS, h52p/l52p=52주 고/저, tvol=거래량, tomv=시가총액.
+def _normalize(ticker, used_excd, raw):
+    """KIS 현재가상세 원본 → stock.py와 동일 키로 정규화. 교차검증을 쉽게 한다.
+    필드 매핑: last=현재가, perx=PER, pbrx=PBR, epsx=EPS, bpsx=BPS,
+    h52p/l52p=52주 고/저, tvol=거래량, tomv=시가총액(=shar×last, USD 절대값 검증됨)."""
     mc = _f(raw.get("tomv"))
-    out = {
+    return {
         "ticker": ticker,
         "source": "KIS",
         "exchange": used_excd,
@@ -207,12 +161,72 @@ def main():
         "volume": _f(raw.get("tvol")),
         "marketCap": mc,
         "marketCapText": _market_cap_text(mc),
-        # 첫 실전 테스트에서 필드명·단위(특히 tomv 시총)를 검증할 수 있도록 원본 동봉.
-        "_raw": raw,
-        "note": ("한투 실전 API 값(증권사급). yfinance와 교차검증용. "
-                 "marketCapText 그대로 사용, 원본 환산 산수 금지. null이면 '데이터 미제공'. "
-                 "_raw는 원본 응답(필드명·단위 검증용) — 정규화 값과 다르면 _raw 우선 점검."),
+        "industry": raw.get("e_icod") or None,
+        "tradable": raw.get("e_ordyn") or None,
     }
+
+
+def _fetch(ticker, forced_excd=None):
+    """한투 시세 조회 → 정규화 dict. 자격증명 없음·미발견이면 None. 그 외 예외는 raise."""
+    appkey, appsecret, env = _load_creds()
+    if not appkey or not appsecret:
+        return None
+    domain = _DOMAINS.get(env, _DOMAINS["prod"])
+    token = _get_token(appkey, appsecret, domain)
+    exchanges = [forced_excd] if forced_excd else _US_EXCHANGES
+    for ex in exchanges:
+        raw = _price_detail(domain, token, appkey, appsecret, ex, ticker)
+        if raw is not None:
+            return _normalize(ticker, ex, raw), raw
+    return None
+
+
+def fetch_quote(ticker, forced_excd=None):
+    """정규화된 한투 시세 dict 반환. 실패 시 None(자격증명 없음·API 오류·미발견).
+    stock.py 등에서 교차검증용으로 import해 쓴다 — 예외를 삼키고 항상 None로 graceful."""
+    try:
+        r = _fetch(ticker, forced_excd)
+        return r[0] if r else None
+    except Exception:
+        return None
+
+
+def main():
+    if len(sys.argv) < 2:
+        print(json.dumps({"error": "ticker 필요. 예: py kis.py AAPL"}, ensure_ascii=False))
+        return
+    ticker = sys.argv[1].upper().strip()
+    forced_excd = sys.argv[2].upper().strip() if len(sys.argv) > 2 else None
+
+    appkey, appsecret, _ = _load_creds()
+    if not appkey or not appsecret:
+        print(json.dumps({"error": "KIS 자격증명 없음. 환경변수 KIS_APP_KEY/KIS_APP_SECRET "
+                          "또는 kis_config.json 설정 필요."}, ensure_ascii=False))
+        return
+
+    try:
+        r = _fetch(ticker, forced_excd)
+    except urllib.error.HTTPError as e:
+        print(json.dumps({"error": f"KIS HTTP 오류 {e.code}: {e.reason} "
+                          "(앱키/시크릿 또는 실전/모의(env) 확인)"}, ensure_ascii=False))
+        return
+    except urllib.error.URLError as e:
+        print(json.dumps({"error": f"KIS 연결 실패: {e}. 네트워크 확인."}, ensure_ascii=False))
+        return
+    except Exception as e:
+        print(json.dumps({"error": f"KIS 조회 실패: {e}"}, ensure_ascii=False))
+        return
+
+    if not r:
+        print(json.dumps({"error": f"{ticker}를 한투 해외시세에서 찾지 못함 "
+                          "(미국 상장 티커인지, 거래소 코드 확인)."}, ensure_ascii=False))
+        return
+
+    out, raw = r
+    out["_raw"] = raw  # 첫 테스트 시 필드명·단위 검증용
+    out["note"] = ("한투 실전 API 값(증권사급). yfinance와 교차검증용. "
+                   "marketCapText 그대로 사용, 원본 환산 산수 금지. null이면 '데이터 미제공'. "
+                   "_raw는 원본 응답(필드명·단위 검증용).")
     print(json.dumps(out, ensure_ascii=False))
 
 

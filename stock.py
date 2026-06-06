@@ -530,6 +530,55 @@ def main():
             "현재 PER 양수(흑자)인데 Forward PER 음수(향후 적자 전망) "
             "— 수익성 전환 불확실, 흑자 지속을 단정하지 말 것")
 
+    # 한투(KIS) 교차검증 — yfinance가 시총·PER을 종종 10배 틀리게 준다(IONQ 사례).
+    # 증권사급 한투 값(=실제 체결 소스)과 대조해 큰 차이가 나면 한투를 신뢰한다.
+    # 자격증명 없거나 비미국 티커·API 실패 시 조용히 yfinance만 사용(graceful).
+    try:
+        from kis import fetch_quote
+        kq = fetch_quote(ticker)
+    except Exception:
+        kq = None
+    if kq:
+        def _diverge(field, tol):
+            """yfinance값(yv)과 한투값(kv)의 상대오차가 tol 초과면 (yv, kv) 반환, 아니면 None."""
+            try:
+                yv, kv = float(out.get(field)), float(kq.get(field))
+            except (TypeError, ValueError):
+                return None
+            if kv == 0:
+                return None
+            return (yv, kv) if abs(yv - kv) / abs(kv) > tol else None
+
+        # 현재가: 3% 초과 차이면 한투(체결가) 채택. 손절·진입 계산의 기준이라 엄격히.
+        d = _diverge("price", 0.03)
+        if d:
+            data_warnings.append(
+                f"현재가 불일치: yfinance ${d[0]} vs 한투 ${d[1]} → 한투(체결소스) 채택")
+            out["price"] = d[1]
+        # PER: 20% 초과 차이면 한투 채택.
+        d = _diverge("trailingPE", 0.20)
+        if d:
+            data_warnings.append(
+                f"PER 불일치: yfinance {d[0]} vs 한투 {d[1]} → 한투 채택")
+            out["trailingPE"] = d[1]
+        # 시가총액: yfinance 미제공이면 한투로 채움, 20% 초과 차이면 한투 채택.
+        km = kq.get("marketCap")
+        if km:
+            if out.get("marketCap") is None:
+                out["marketCap"] = km
+                out["marketCapText"] = kq.get("marketCapText")
+                data_warnings.append(
+                    f"시가총액 yfinance 미제공 → 한투값 사용({kq.get('marketCapText')})")
+            else:
+                d = _diverge("marketCap", 0.20)
+                if d:
+                    data_warnings.append(
+                        f"시가총액 불일치: yfinance vs 한투({kq.get('marketCapText')}) → 한투 채택")
+                    out["marketCap"] = km
+                    out["marketCapText"] = kq.get("marketCapText")
+        out["kis_price"] = kq.get("price")
+        out["kis_exchange"] = kq.get("exchange")
+
     # 애널리스트 컨센서스 정합성 — 의견 수가 0/없음이면 목표가는 신뢰 불가.
     na = out.get("numAnalysts")
     if not na:  # None 또는 0
@@ -557,6 +606,7 @@ def main():
                    "freeCashflowText=잉여현금흐름(FCF) 표시용 문자열(미리계산됨, 음수는 현금유출) — 이 값을 그대로 쓰고 freeCashflow 원본으로 직접 환산 산수 하지 말 것. freeCashflowText 없으면 '데이터 미제공'. "
                    "roe/profitMargin/revenueGrowth/dividendYield는 소수값 → ×100 해서 %로. null이면 '데이터 미제공', 지어내지 말 것. "
                    "targetMean(애널리스트 목표가)와 손익비(R:R) 계산용 목표가는 전혀 다른 것 — 절대 한 문장에서 합치거나 '평균 X에서 Y까지'식으로 혼용하지 말 것. 애널리스트 목표가는 컨센서스로, R:R 목표가는 손절 기반 계산으로 따로 제시. "
+                   "kis_price=한투(체결 소스) 현재가, kis_exchange=거래소. 한투와 대조해 큰 차이가 나면 data_warnings에 '한투 채택'으로 기록되며 해당 값은 이미 한투값으로 교체됨 — 교체된 값을 신뢰. "
                    "data_warnings가 있으면 해당 필드는 신뢰 불가로 걸러진 것 — 그 수치를 복원·추정하지 말 것. "
                    "그리고 data_warnings의 각 항목은 보고서 맨 위(① 결론 직전 또는 직후)에 '⚠️ 데이터 경고:'로 반드시 명시할 것 — 묻거나 생략 금지.")
     print(json.dumps(out, ensure_ascii=False))
