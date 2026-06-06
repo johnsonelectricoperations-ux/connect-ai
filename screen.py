@@ -8,14 +8,15 @@
 #   py screen.py tenbagger              → watchlist.txt 에서 텐배거 후보 발굴
 #   py screen.py AAPL MSFT NVDA         → 티커 직접 지정
 #   py screen.py suggest quantum        → 테마 유니버스 자동 발굴 (value 전략)
-#   py screen.py suggest tenbagger      → 소형 고성장 텐배거 유니버스 발굴
+#   py screen.py suggest tenbagger      → 소형~중형 고성장 텐배거 유니버스 발굴
+#   py screen.py suggest microcap       → 극소형주($30M~$300M) 텐배거 발굴 (고위험)
 #   py screen.py suggest ai momentum    → 테마 유니버스 + 전략 지정
 #   py screen.py suggest               → 사용 가능한 테마 목록 출력
 #
 # 전략:
 #   value     : 52주 저점 근접 + RSI 낮음(과매도) + P/S 낮음 → 반등/저평가 후보
 #   momentum  : 정배열 추세 + 매출성장 + RSI 적정(과열 아님) → 성장 모멘텀 후보
-#   tenbagger : 소형주($300M-$5B) + 고성장(30%+) + Rule of 40 + 낮은 부채 → 10배 후보
+#   tenbagger : 극소형~중형주($30M~$5B) + 고성장 + Rule of 40 + 낮은 부채 → 10배 후보
 #
 # 출력 JSON (점수 내림차순). UTF-8 강제, 이모지 금지, 계산은 Python.
 
@@ -77,17 +78,40 @@ def fetch_metrics(yf, ticker):
         pos52 = None
         if high52 and low52 and high52 != low52:
             pos52 = round((price - low52) / (high52 - low52) * 100, 1)  # 0=저점,100=고점
+        # profitMargins: yfinance가 소수형(0.039)과 퍼센트형(3.9)을 혼용 → 정규화
         raw_pm = info.get("profitMargins")
-        profit_margins = round(raw_pm, 4) if (raw_pm is not None and -10.0 <= raw_pm <= 1.0) else None
+        profit_margins = None
+        if raw_pm is not None:
+            try:
+                pm_v = float(raw_pm)
+                if abs(pm_v) > 2.0:
+                    pm_v = pm_v / 100
+                profit_margins = round(pm_v, 4) if -10.0 <= pm_v <= 1.0 else None
+            except (TypeError, ValueError):
+                pass
+        # debtToEquity: yfinance가 비율형(0.61)과 퍼센트형(18.74)을 혼용 → 비율형으로 정규화
         raw_dte = info.get("debtToEquity")
-        debt_to_equity = round(raw_dte / 100, 2) if (raw_dte is not None and 0 <= raw_dte <= 10000) else None
+        debt_to_equity = None
+        if raw_dte is not None:
+            try:
+                dte_v = float(raw_dte)
+                if abs(dte_v) > 5:
+                    dte_v = dte_v / 100
+                debt_to_equity = round(dte_v, 2)
+            except (TypeError, ValueError):
+                pass
+        mc = info.get("marketCap")
+        # 극소형주 여부 플래그 — 데이터 신뢰도 낮음 경고용
+        mc_b = mc / 1e9 if mc else None
+        is_micro = mc_b is not None and mc_b < 0.3
         return {
             "ticker": ticker, "price": price, "rsi14": rsi14(closes),
             "ma20": ma20, "ma50": ma50,
             "pos52": pos52,
             "fiftyTwoWeekHigh": round(high52, 2) if high52 else None,
             "fiftyTwoWeekLow": round(low52, 2) if low52 else None,
-            "marketCap": info.get("marketCap"),
+            "marketCap": mc,
+            "is_micro": is_micro,
             "priceToSales": info.get("priceToSalesTrailing12Months"),
             "revenueGrowth": info.get("revenueGrowth"),
             "forwardPE": info.get("forwardPE"),
@@ -144,15 +168,16 @@ def score_momentum(m):
 
 
 def score_tenbagger(m):
-    """텐배거 후보: 소형주 + 고성장 + Rule of 40 + 낮은 부채 + 아직 덜 오른 가격.
+    """텐배거 후보: 극소형~소형·중형주 + 고성장 + Rule of 40 + 낮은 부채 + 아직 덜 오른 가격.
 
-    피터 린치 스타일 — 시총 $300M-$5B 소형·중형주에서 고성장·저부채를 찾는다.
+    피터 린치 스타일 — 시총 $30M~$5B 범위에서 고성장·저부채를 찾는다.
+    극소형주($30M~$300M)는 잠재력이 크지만 데이터 신뢰도가 낮아 별도 표기.
     정성 정보(경제적 해자·경영진)는 이 도구 밖이므로 정량 점수만 계산.
     점수가 높다고 추천이 아니라 심층 검증 후보 순위.
     """
     s, reasons = 0.0, []
 
-    # 1. 시총 체크: $300M - $5B 소형·중형주 영역 (텐배거 가능 시총대)
+    # 1. 시총 체크: 극소형~중형 전 구간 포함
     mc = m.get("marketCap")
     if mc is not None:
         mc_b = mc / 1e9  # 십억 달러
@@ -160,8 +185,11 @@ def score_tenbagger(m):
             s += 3; reasons.append(f'텐배거 시총대 ${round(mc_b,1)}B')
         elif 5.0 < mc_b <= 15.0:
             s += 1; reasons.append(f'중형주 ${round(mc_b,1)}B')
-        elif mc_b < 0.3:
-            s -= 1; reasons.append(f'초소형주 유동성위험 ${round(mc_b*1000,0):.0f}M')
+        elif 0.03 <= mc_b < 0.3:
+            # 극소형주: 고성장 시 텐배거 잠재력 크지만 유동성·데이터 리스크 병기
+            s += 2; reasons.append(f'극소형주 ${round(mc_b*1000,0):.0f}M — 고성장 시 고배율 가능, 유동성·데이터 신뢰도 낮음')
+        elif mc_b < 0.03:
+            s -= 2; reasons.append(f'초미니캡 ${round(mc_b*1000,1):.1f}M — 유동성 위험 높음')
 
     # 2. 매출 성장: 고성장 기업이 텐배거 후보
     rg = m.get("revenueGrowth")
@@ -239,6 +267,12 @@ UNIVERSES = {
     "tenbagger":   ["IONQ", "RGTI", "RKLB", "ASTS", "SOFI", "AFRM", "UPST",
                     "HIMS", "CELH", "DUOL", "SOUN", "RXRX", "TMDX", "NUVL",
                     "GTLB", "BILL", "AXON", "KTOS", "APP", "SMCI"],
+    # 극소형주(micro-cap) 유니버스: 시총 $30M~$300M 구간 고성장 후보.
+    # yfinance 데이터 신뢰도 낮음 — 반드시 직접 IR·재무 확인 병행할 것.
+    # 상장폐지·유동성 리스크 내재. 발굴 후 심층 검증 필수.
+    "microcap":    ["QBTS", "QUBT", "SOUN", "BBAI", "GFAI", "IREN", "AEYE",
+                    "WULF", "CIFR", "MIGI", "NKGN", "CTXR", "IDAI", "DRUG",
+                    "AIXI", "PONO", "BFRI", "INPX", "PRTK", "SOPA"],
 }
 
 
@@ -332,8 +366,16 @@ def main():
         "strategy": strat,
         "ranked": results,
         "failed": failed,
-        "note": "score 높을수록 해당 전략에 부합. reasons=가점 근거. 이것은 1차 스크리닝(객관 지표 랭킹)이며, 상위 후보는 반드시 기술/펀더멘털 심층분석으로 검증할 것. 추천이 아니라 후보 정렬.",
-        "fields_only": "이 JSON에 있는 필드(price·rsi14·ma20·ma50·pos52·52주고저·marketCap·priceToSales·revenueGrowth·forwardPE·trailingPE·beta·profitMargins·debtToEquity·trend)만 인용하라. 매출액·파트너십·기술방식(trapped ion 등)·시장점유율 같은 정성 정보는 이 도구가 제공하지 않으므로 절대 지어내지 말 것. 없는 값은 'N/A' 또는 '데이터 미제공'으로 표기.",
+        "note": ("score 높을수록 해당 전략에 부합. reasons=가점 근거. "
+                 "이것은 1차 스크리닝(객관 지표 랭킹)이며, 상위 후보는 반드시 기술/펀더멘털 심층분석으로 검증할 것. 추천이 아니라 후보 정렬. "
+                 "is_micro=true인 종목(극소형주, 시총 $300M 미만)은 yfinance 데이터 신뢰도가 낮고 "
+                 "상장폐지·유동성 리스크가 있음 — 반드시 IR·재무제표 직접 확인 후 진입 결정할 것. "
+                 "극소형주는 score 높아도 데이터 오류일 수 있으므로 '발굴 후보'로만 분류하고 즉시 매수 근거로 쓰지 말 것."),
+        "fields_only": ("이 JSON에 있는 필드(price·rsi14·ma20·ma50·pos52·52주고저·marketCap·"
+                        "priceToSales·revenueGrowth·forwardPE·trailingPE·beta·profitMargins·"
+                        "debtToEquity·trend·is_micro)만 인용하라. "
+                        "매출액·파트너십·기술방식·시장점유율 같은 정성 정보는 이 도구가 제공하지 않으므로 절대 지어내지 말 것. "
+                        "없는 값은 'N/A' 또는 '데이터 미제공'으로 표기."),
     }
     if suggest_mode and suggest_theme:
         out["theme"] = suggest_theme
