@@ -193,6 +193,26 @@ def main():
                 })
 
             last = rows[-1]
+
+            def _classify_trend(price, ma20, ma50):
+                """MA 순서뿐 아니라 현재가 위치까지 반영한다. MA20>MA50(정배열)이어도
+                현재가가 MA50 아래로 이탈하면 상승추세가 아니라 '하락 전환 경고'다.
+                (TSLA 오판 사례: 현재가<MA50인데 MA순서만 보고 '상승추세'라 한 버그 수정)"""
+                if not (price and ma20 and ma50):
+                    return None
+                if ma20 > ma50:  # MA 정배열
+                    if price >= ma20:
+                        return "bullish(정배열·현재가 MA20 위 — 상승추세 확인)"
+                    if price >= ma50:
+                        return "pullback(정배열이나 현재가 MA20 아래 — 단기 눌림목)"
+                    return "weakening(정배열이나 현재가 MA50 이탈 — 하락 전환 경고)"
+                else:            # MA 역배열
+                    if price <= ma20:
+                        return "bearish(역배열·현재가 MA20 아래 — 하락추세)"
+                    if price <= ma50:
+                        return "rebound(역배열이나 현재가 MA20 위 — 단기 반등)"
+                    return "recovering(역배열이나 현재가 MA50 회복 — 상승 전환 가능)"
+
             summary = {
                 "price": last["close"],
                 "ma20": last["ma20"],
@@ -201,7 +221,7 @@ def main():
                 "macd": last["macd"],
                 "macd_signal": last["signal"],
                 "macd_hist": round(last["macd"]-last["signal"], 2) if last["macd"] and last["signal"] else None,
-                "trend": "bullish_aligned(MA20>MA50)" if last["ma20"] and last["ma50"] and last["ma20"] > last["ma50"] else "bearish_aligned(MA20<MA50)" if last["ma20"] and last["ma50"] else None,
+                "trend": _classify_trend(last["close"], last["ma20"], last["ma50"]),
                 "rsi_state": "overbought(>=70)" if last["rsi14"] and last["rsi14"] >= 70 else "oversold(<=30)" if last["rsi14"] and last["rsi14"] <= 30 else "neutral" if last["rsi14"] else None,
                 "atr14": atr(14),
             }
