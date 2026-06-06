@@ -449,6 +449,27 @@ def main():
     _reject("dividendYield", 0.0, 1.0, "단위 혼동/비현실적")
     # 베타: 정상 범위는 대략 -3~3. ±10 밖이면 데이터 오류.
     _reject("beta", -10.0, 10.0, "비현실적")
+    # 시가총액: 음수·0은 불가, 상한 1e14($100조)는 사실상 데이터 오류(현존 최대 ~$4조대).
+    _reject("marketCap", 1.0, 1e14, "비현실적")
+
+    # 시가총액 표시용 텍스트를 Python에서 미리 계산 — 9B 모델의 단위 변환(억/조) 실수를
+    # 원천 차단한다(buy_ratio_pct와 동일 원칙: 모델에게 산수를 맡기지 않는다).
+    mc = out.get("marketCap")
+    if mc:
+        try:
+            mc = float(mc)
+            jo = mc / 1e12          # 조 단위
+            if jo >= 1:
+                jo_int = int(jo)
+                eok = round((mc - jo_int * 1e12) / 1e8)
+                out["marketCapText"] = (f"{jo_int}조 {eok:,}억 달러" if eok
+                                        else f"{jo_int}조 달러")
+            elif mc >= 1e8:         # 1억 달러 이상: 억 단위 정수
+                out["marketCapText"] = f"{round(mc / 1e8):,}억 달러"
+            else:                   # 1억 달러 미만(극소형주): 만 달러로 정밀 표시
+                out["marketCapText"] = f"{round(mc / 1e4):,}만 달러"
+        except (TypeError, ValueError):
+            pass
 
     # 애널리스트 컨센서스 정합성 — 의견 수가 0/없음이면 목표가는 신뢰 불가.
     na = out.get("numAnalysts")
@@ -473,6 +494,7 @@ def main():
                    "recent_rating_changes=증권사별 등급변경 이력. "
                    "ratings_stale=true면 등급변경이 ratings_days_old일 전이라 오래됨 → '최근 변경'이라 하지 말고 "
                    "'X일 전 이력, 신뢰도 낮음'으로 명시(단 trend_direction/recommendation_trend은 최신이라 신뢰 가능). "
+                   "marketCapText=시가총액 표시용 문자열(미리계산됨) — 이 값을 그대로 쓰고 marketCap 원본으로 직접 억/조 환산 산수 하지 말 것. marketCapText 없으면 '데이터 미제공'. "
                    "roe/profitMargin/revenueGrowth/dividendYield는 소수값 → ×100 해서 %로. null이면 '데이터 미제공', 지어내지 말 것. "
                    "data_warnings가 있으면 해당 필드는 신뢰 불가로 걸러진 것 — 그 수치를 복원·추정하지 말 것.")
     print(json.dumps(out, ensure_ascii=False))
