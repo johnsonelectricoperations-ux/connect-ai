@@ -11,3 +11,7 @@ releases/
 # Python
 __pycache__/
 *.pyc
+
+# 한국투자증권(KIS) 자격증명·토큰 — 절대 커밋 금지
+kis_config.json
+.kis_token.json
