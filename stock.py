@@ -463,7 +463,20 @@ def main():
             data_warnings.append(f"{field}({v}) {reason} → 미제공 처리")
             out[field] = None
 
-    # 순이익률: net income/revenue. +100% 초과·-1000% 미만은 사실상 데이터 오류.
+    # yfinance가 소수형(0.039=3.9%)과 퍼센트형(3.9=3.9%)을 일관되지 않게 반환.
+    # _reject 전에 정규화: |값| > 2.0 이면 퍼센트형으로 간주해 ÷100 → 소수형으로.
+    # 실제 순이익률·ROE·성장률이 ±200%를 넘는 경우는 사실상 없으므로 안전.
+    for _pct_field in ("profitMargin", "roe", "revenueGrowth"):
+        _v = out.get(_pct_field)
+        if _v is not None:
+            try:
+                _fv = float(_v)
+                if abs(_fv) > 2.0:
+                    out[_pct_field] = _fv / 100
+            except (TypeError, ValueError):
+                pass
+
+    # 순이익률: +100%(1.0) 초과·-1000%(-10.0) 미만은 정규화 후에도 비현실적.
     _reject("profitMargin", -10.0, 1.0, "비현실적")
     # ROE: 적자/자본잠식 기업에서 폭주값. ±1000%(=±10.0) 밖이면 신뢰 불가.
     _reject("roe", -10.0, 10.0, "비현실적")
@@ -583,10 +596,18 @@ def main():
 
     # 현재 PER 양수(흑자)인데 Forward PER 음수(향후 적자 전망)면 비정상 조합.
     # 차단까진 아니나 모델이 수익성을 단정하지 못하게 경고만 남긴다.
-    if _sign(out.get("trailingPE")) == 1 and _sign(out.get("forwardPE")) == -1:
-        data_warnings.append(
-            "현재 PER 양수(흑자)인데 Forward PER 음수(향후 적자 전망) "
-            "— 수익성 전환 불확실, 흑자 지속을 단정하지 말 것")
+    # forwardPE가 진짜 음수(향후 EPS 적자 전망)인 경우만 경고.
+    # trailingPE 양수라도 forwardPE 음수는 적법한 조합(일회성 흑자 후 적자 전망).
+    fpe = out.get("forwardPE")
+    tpe = out.get("trailingPE")
+    if fpe is not None and tpe is not None:
+        try:
+            if float(tpe) > 0 and float(fpe) < 0:
+                data_warnings.append(
+                    f"현재 PER 양수(흑자)인데 Forward PER {fpe}(향후 EPS 적자 전망) "
+                    "— 수익성 전환 불확실, 흑자 지속을 단정하지 말 것")
+        except (TypeError, ValueError):
+            pass
 
     # 한투(KIS) 교차검증 — yfinance가 시총·PER을 종종 10배 틀리게 준다(IONQ 사례).
     # 증권사급 한투 값(=실제 체결 소스)과 대조해 큰 차이가 나면 한투를 신뢰한다.
@@ -668,6 +689,10 @@ def main():
                    "kis_price=한투(체결 소스) 현재가, kis_exchange=거래소. 한투와 대조해 큰 차이가 나면 data_warnings에 '한투 채택'으로 기록되며 해당 값은 이미 한투값으로 교체됨 — 교체된 값을 신뢰. "
                    "data_warnings가 있으면 해당 필드는 신뢰 불가로 걸러진 것 — 그 수치를 복원·추정하지 말 것. "
                    "그리고 data_warnings의 각 항목은 보고서 맨 위(① 결론 직전 또는 직후)에 '⚠️ 데이터 경고:'로 반드시 명시할 것 — 묻거나 생략 금지.")
+    # 내부 계산용 원본값은 출력에서 제거 — 모델이 직접 환산 시도하는 것을 원천 차단.
+    # marketCapText/freeCashflowText/debtToEquityText로 대체됨.
+    for _k in ("marketCap", "freeCashflow", "sharesOutstanding"):
+        out.pop(_k, None)
     print(json.dumps(out, ensure_ascii=False))
 
 
