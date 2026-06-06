@@ -60,6 +60,16 @@
         "title": "Connect AI: Export Chat as Markdown"
       },
       {
+        "command": "connectAiLab.portfolio.open",
+        "title": "Connect AI: 📊 포트폴리오 열기",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "connectAiLab.watchlist.open",
+        "title": "Connect AI: 👁 관심종목 열기",
+        "icon": "$(eye)"
+      },
+      {
         "command": "connect-ai-lab.explainSelection",
         "title": "Connect AI: Explain Selected Code"
       },

@@ -99,7 +99,7 @@ def _migrate_from_txt():
             if not s or s.startswith("#"):
                 continue
             tk = s.upper()
-            db[tk] = {"added": today, "note": "", "earningsDate": None, "lastScore": None}
+            db[tk] = {"added": today, "note": "", "earningsDate": None, "lastScore": None, "addedBy": "manual"}
     if db:
         with open(_DB_PATH, "w", encoding="utf-8") as f:
             json.dump(db, f, ensure_ascii=False, indent=2)
@@ -218,7 +218,7 @@ def cmd_add(db, tickers):
         if tk in db:
             already.append(tk)
         else:
-            db[tk] = {"added": today, "note": "", "earningsDate": None, "lastScore": None}
+            db[tk] = {"added": today, "note": "", "earningsDate": None, "lastScore": None, "addedBy": "manual"}
             added.append(tk)
     _save_db(db)
     return {"added": added, "already_existed": already, "total": len(db)}
@@ -328,6 +328,21 @@ def update_score(ticker, score):
     if tk in db:
         db[tk]["lastScore"] = score
         _save_db(db)
+
+
+def add_auto(ticker, score=None):
+    """screen.py 발굴 종목을 addedBy='auto'로 자동 등록. 이미 있으면 score만 갱신."""
+    db = _load_db()
+    tk = ticker.upper()
+    today = date.today().isoformat()
+    if tk not in db:
+        db[tk] = {"added": today, "note": "", "earningsDate": None, "lastScore": score, "addedBy": "auto"}
+    else:
+        if score is not None:
+            db[tk]["lastScore"] = score
+        if "addedBy" not in db[tk]:
+            db[tk]["addedBy"] = "auto"
+    _save_db(db)
 
 
 def get_upcoming_earnings(days_ahead=7):

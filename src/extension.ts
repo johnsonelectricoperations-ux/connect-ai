@@ -808,6 +808,7 @@ function _isLMStudioEngine(ollamaBase: string): boolean {
 /* v2.89.66 — _getBrainDir, _isBrainDirExplicitlySet, getCompanyDir, COMPANY_SUBDIR,
    _expandTilde, _resolvePathInput 모두 ./paths.ts 로 이동. 모듈 간 import 일원화. */
 import { _getBrainDir, _isBrainDirExplicitlySet, getCompanyDir, COMPANY_SUBDIR, _expandTilde, _resolvePathInput } from './paths';
+import { PortfolioPanel, WatchlistPanel } from './investmentPanels';
 
 async function _ensureBrainDir(): Promise<string | null> {
     if (_isBrainDirExplicitlySet()) {
@@ -8779,6 +8780,14 @@ export function activate(context: vscode.ExtensionContext) {
         /* v2.89.137 — 매출 대시보드 (PayPal 시각화) */
         vscode.commands.registerCommand('connectAiLab.revenueDashboard.open', () => {
             RevenueDashboardPanel.createOrShow();
+        })
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('connectAiLab.portfolio.open', () => {
+            PortfolioPanel.createOrShow(context.extensionUri);
+        }),
+        vscode.commands.registerCommand('connectAiLab.watchlist.open', () => {
+            WatchlistPanel.createOrShow(context.extensionUri);
         })
     );
     context.subscriptions.push(
