@@ -471,6 +471,28 @@ def main():
         except (TypeError, ValueError):
             pass
 
+    # 잉여현금흐름(FCF)도 원본 달러 정수라 9B 모델이 억/조 변환을 틀린다(AAPL FCF를
+    # 10배 과대표시한 사례). marketCap과 동일하게 Python에서 미리 포맷한다. 음수(현금
+    # 유출)도 부호를 살려 표시 — 적자/성장기업 판단에 중요.
+    fcf = out.get("freeCashflow")
+    if fcf is not None:
+        try:
+            fcf = float(fcf)
+            neg = "-" if fcf < 0 else ""
+            a = abs(fcf)
+            jo = a / 1e12
+            if jo >= 1:
+                jo_int = int(jo)
+                eok = round((a - jo_int * 1e12) / 1e8)
+                body = f"{jo_int}조 {eok:,}억 달러" if eok else f"{jo_int}조 달러"
+            elif a >= 1e8:
+                body = f"{round(a / 1e8):,}억 달러"
+            else:
+                body = f"{round(a / 1e4):,}만 달러"
+            out["freeCashflowText"] = neg + body
+        except (TypeError, ValueError):
+            pass
+
     # 교차 일관성 검증 — 단일 필드는 정상 범위라도 필드 간 모순이면 신뢰 불가.
     # 부호가 연동된 지표(순이익에서 파생)끼리 어긋나면 한쪽이 오류 → 차단/경고.
     # IONQ 사례: "ROE 양수 vs 순이익률 적자/미제공" 같은 모순을 잡는다.
@@ -532,8 +554,11 @@ def main():
                    "ratings_stale=true면 등급변경이 ratings_days_old일 전이라 오래됨 → '최근 변경'이라 하지 말고 "
                    "'X일 전 이력, 신뢰도 낮음'으로 명시(단 trend_direction/recommendation_trend은 최신이라 신뢰 가능). "
                    "marketCapText=시가총액 표시용 문자열(미리계산됨) — 이 값을 그대로 쓰고 marketCap 원본으로 직접 억/조 환산 산수 하지 말 것. marketCapText 없으면 '데이터 미제공'. "
+                   "freeCashflowText=잉여현금흐름(FCF) 표시용 문자열(미리계산됨, 음수는 현금유출) — 이 값을 그대로 쓰고 freeCashflow 원본으로 직접 환산 산수 하지 말 것. freeCashflowText 없으면 '데이터 미제공'. "
                    "roe/profitMargin/revenueGrowth/dividendYield는 소수값 → ×100 해서 %로. null이면 '데이터 미제공', 지어내지 말 것. "
-                   "data_warnings가 있으면 해당 필드는 신뢰 불가로 걸러진 것 — 그 수치를 복원·추정하지 말 것.")
+                   "targetMean(애널리스트 목표가)와 손익비(R:R) 계산용 목표가는 전혀 다른 것 — 절대 한 문장에서 합치거나 '평균 X에서 Y까지'식으로 혼용하지 말 것. 애널리스트 목표가는 컨센서스로, R:R 목표가는 손절 기반 계산으로 따로 제시. "
+                   "data_warnings가 있으면 해당 필드는 신뢰 불가로 걸러진 것 — 그 수치를 복원·추정하지 말 것. "
+                   "그리고 data_warnings의 각 항목은 보고서 맨 위(① 결론 직전 또는 직후)에 '⚠️ 데이터 경고:'로 반드시 명시할 것 — 묻거나 생략 금지.")
     print(json.dumps(out, ensure_ascii=False))
 
 
