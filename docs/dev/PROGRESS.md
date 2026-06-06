@@ -1,7 +1,7 @@
 # Connect AI — 미국 주식 투자 AI 진행 기록
 
 > 이 파일은 세션 간 컨텍스트 보존용. 새 세션 시작 시 이 파일을 먼저 읽을 것.
-> 마지막 업데이트: 2026-06-06 (v3.1.6 — Macrotrends 10년 재무 역사 연동)
+> 마지막 업데이트: 2026-06-06 (v3.1.7 — news.py + watchlist.py 관심종목 DB)
 
 ---
 
@@ -207,6 +207,15 @@ VS Code 확장(connect-ai-lab.vsix)을 미국 주식 투자 분석 AI로 개조.
   - `경기사이클_섹터로테이션` — 4국면별 주도 섹터
 - 모든 파일이 기존 규격 준수(담당 에이전트 헤더 + stock.py/macro.py 필드 연결 + 날조 금지 원칙).
 - update.bat이 brain 폴더로 자동 배포 → 다음 분석부터 컨텍스트 인식.
+
+**v3.1.7 — news.py + watchlist.py 관심종목 DB**
+- `news.py` 신규: Yahoo Finance RSS → Google News RSS 폴백. 감성 분류(positive/negative/neutral).
+  sentiment_summary.signal(bullish/bearish/cautious/mixed). score_tenbagger 항목 9 연동.
+- `watchlist.py` 신규: watchlist.json DB (추가일·메모·실적일·lastScore).
+  add/remove/calendar/sync/note CLI. watchlist.txt 자동 동기화(screen.py 호환 유지).
+  `get_upcoming_earnings()` — Phase 7 알림 시스템 연동 준비.
+- SCORING_VERSION 1.2.0 → 1.3.0 (뉴스 감성 항목 9 추가)
+- test_screen.py 51/51 PASS
 
 **v3.1.6 — Macrotrends 10년 재무 역사 연동 (SCORING v1.1.0)**
 - `macrotrends.py` 신규: `fetch_history(ticker)` — 매출/순이익/EPS/FCF 연간 데이터,
