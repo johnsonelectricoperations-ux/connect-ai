@@ -471,6 +471,43 @@ def main():
         except (TypeError, ValueError):
             pass
 
+    # 교차 일관성 검증 — 단일 필드는 정상 범위라도 필드 간 모순이면 신뢰 불가.
+    # 부호가 연동된 지표(순이익에서 파생)끼리 어긋나면 한쪽이 오류 → 차단/경고.
+    # IONQ 사례: "ROE 양수 vs 순이익률 적자/미제공" 같은 모순을 잡는다.
+    def _sign(x):
+        try:
+            fx = float(x)
+        except (TypeError, ValueError):
+            return None
+        return 1 if fx > 0 else (-1 if fx < 0 else 0)
+
+    # trailingPE = 주가(>0)/EPS → 부호가 반드시 같아야 한다. 어긋나면 한쪽이 손상.
+    # 어느 쪽이 틀린지 알 수 없으므로 둘 다 차단(모델 복원 방지).
+    spe, seps = _sign(out.get("trailingPE")), _sign(out.get("eps"))
+    if spe and seps and spe != seps:
+        data_warnings.append(
+            f"trailingPE({out['trailingPE']})와 EPS({out['eps']}) 부호 불일치 "
+            "→ 한쪽이 데이터 오류, 둘 다 미제공 처리")
+        out["trailingPE"] = None
+        out["eps"] = None
+
+    # ROE·순이익률은 둘 다 순이익에서 파생. 순이익률 분모(매출)는 항상 양수라
+    # 부호가 신뢰 가능하지만, ROE 분모(자기자본)는 자본잠식 시 음수가 되어 부호가
+    # 뒤집힌다. 둘이 어긋나면 ROE를 신뢰 불가로 보고 차단(순이익률은 유지).
+    sroe, spm = _sign(out.get("roe")), _sign(out.get("profitMargin"))
+    if sroe and spm and sroe != spm:
+        data_warnings.append(
+            f"ROE({out['roe']})와 순이익률({out['profitMargin']}) 부호 불일치 "
+            "→ ROE 신뢰 불가(자본잠식 가능성), 미제공 처리")
+        out["roe"] = None
+
+    # 현재 PER 양수(흑자)인데 Forward PER 음수(향후 적자 전망)면 비정상 조합.
+    # 차단까진 아니나 모델이 수익성을 단정하지 못하게 경고만 남긴다.
+    if _sign(out.get("trailingPE")) == 1 and _sign(out.get("forwardPE")) == -1:
+        data_warnings.append(
+            "현재 PER 양수(흑자)인데 Forward PER 음수(향후 적자 전망) "
+            "— 수익성 전환 불확실, 흑자 지속을 단정하지 말 것")
+
     # 애널리스트 컨센서스 정합성 — 의견 수가 0/없음이면 목표가는 신뢰 불가.
     na = out.get("numAnalysts")
     if not na:  # None 또는 0
