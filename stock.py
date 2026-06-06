@@ -231,7 +231,7 @@ def main():
                                "예: trend가 'weakening(...)' 이면 'weakening'으로 제시, 절대 'Pullback'으로 바꾸지 말 것. "
                                "rsi_state=overbought(>=70)/oversold(<=30)/neutral 중 하나(미리계산됨) — 그대로 쓸 것. "
                                "atr14=최근 14일 평균 변동폭(ATR, 달러). null이면 데이터 미제공.")
-            print(json.dumps({"ticker": ticker, "summary": summary, "history": rows}))
+            print(json.dumps({"ticker": ticker, "summary": summary, "history": rows}, ensure_ascii=False))
         except Exception as e:
             print(json.dumps({"error": f"history 조회 실패: {e}"}, ensure_ascii=False))
         return
@@ -552,15 +552,20 @@ def main():
         except (TypeError, ValueError):
             pass
 
-    # D/E(부채비율) 표시 문자열 사전계산 — yfinance debtToEquity는 소수 비율값(ratio).
-    # 예: 0.61 = 자본 대비 부채 61%(= 0.61배). 모델이 '18.74배' 같은 레버리지로
-    # 오해하지 않도록 "%"와 "배" 둘 다 표기한 문자열로 미리 준다.
+    # D/E(부채비율) 표시 문자열 사전계산.
+    # yfinance가 비율형(0.61 = 61%)과 퍼센트형(18.74 = 18.74%)을 혼용.
+    # |값| > 5이면 퍼센트형으로 간주해 ÷100 → 비율형으로 정규화.
     de = out.get("debtToEquity")
     if de is not None:
         try:
             de_val = float(de)
-            pct = de_val * 100
-            out["debtToEquityText"] = f"{de_val:.2f}x ({pct:.1f}%)"
+            if abs(de_val) > 5:
+                de_ratio = de_val / 100
+                de_pct = de_val
+            else:
+                de_ratio = de_val
+                de_pct = de_val * 100
+            out["debtToEquityText"] = f"{de_ratio:.2f}x ({de_pct:.1f}%)"
         except (TypeError, ValueError):
             pass
 
@@ -691,7 +696,7 @@ def main():
                    "그리고 data_warnings의 각 항목은 보고서 맨 위(① 결론 직전 또는 직후)에 '⚠️ 데이터 경고:'로 반드시 명시할 것 — 묻거나 생략 금지.")
     # 내부 계산용 원본값은 출력에서 제거 — 모델이 직접 환산 시도하는 것을 원천 차단.
     # marketCapText/freeCashflowText/debtToEquityText로 대체됨.
-    for _k in ("marketCap", "freeCashflow", "sharesOutstanding"):
+    for _k in ("marketCap", "freeCashflow", "sharesOutstanding", "debtToEquity"):
         out.pop(_k, None)
     print(json.dumps(out, ensure_ascii=False))
 
