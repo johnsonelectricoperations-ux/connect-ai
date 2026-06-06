@@ -135,3 +135,325 @@ MVP 순서
 핵심 요약
 
 백테스트 원천 데이터는 Yahoo + FMP + SEC 13F, 엔진은 vectorbt, 저장은 DuckDB + Parquet가 현재 v5 목표에 가장 적합합니다. Macrotrends와 Dataroma는 연구·설명·교차검증용 참고 자료로 두고, 팩터 검증과 포트폴리오 시뮬레이션의 원천 데이터로는 쓰지 않는 편이 좋습니다.
+
+--- 구체적인 방법
+네. 결론부터 말하면 **당신이 선정한 5개 모두 Python에서 직접 다룰 수 있습니다.**
+
+다만 난이도가 다릅니다.
+
+| 구성요소          | Python 지원 | 난이도 | 추천    |
+| ------------- | --------- | --- | ----- |
+| Yahoo Finance | 매우 좋음     | ★   | 적극 추천 |
+| FMP           | 매우 좋음     | ★   | 적극 추천 |
+| SEC 13F       | 가능        | ★★★ | 추천    |
+| DuckDB        | 매우 좋음     | ★   | 적극 추천 |
+| vectorbt      | 매우 좋음     | ★★  | 적극 추천 |
+
+---
+
+# 1. Yahoo Finance
+
+가장 쉽습니다.
+
+```python
+import yfinance as yf
+
+aapl = yf.Ticker("AAPL")
+
+hist = aapl.history(period="5y")
+
+print(hist.head())
+```
+
+얻을 수 있는 것
+
+```text
+OHLCV
+52주 고가
+52주 저가
+시총
+RS 계산용 가격
+MA20
+MA50
+RSI
+```
+
+Connect AI에서는 거의 필수입니다.
+
+---
+
+# 2. FMP (Financial Modeling Prep)
+
+API 제공
+
+```python
+import requests
+
+url = f"https://financialmodelingprep.com/api/v3/income-statement/AAPL?apikey=KEY"
+
+data = requests.get(url).json()
+```
+
+얻을 수 있는 것
+
+```text
+Revenue
+Gross Profit
+Gross Margin
+Operating Margin
+FCF
+Cash
+Debt
+Enterprise Value
+```
+
+당신의
+
+```text
+Revenue Growth
+Gross Margin
+Rule of 40
+FCF
+Cash Runway
+```
+
+전부 여기서 나옵니다.
+
+---
+
+# 3. SEC 13F
+
+가능은 한데 가장 어렵습니다.
+
+---
+
+방법1
+
+SEC EDGAR API
+
+```python
+import requests
+```
+
+직접 파싱
+
+---
+
+방법2
+
+WhaleWisdom
+
+---
+
+방법3
+
+sec-edgar-downloader
+
+```bash
+pip install sec-edgar-downloader
+```
+
+예시
+
+```python
+from sec_edgar_downloader import Downloader
+
+dl = Downloader("data")
+
+dl.get("13F-HR", "0001067983")
+```
+
+---
+
+13F는
+
+```text
+기관보유율 변화
+```
+
+를 계산하기 위해 필요합니다.
+
+---
+
+# 4. DuckDB
+
+이건 DB입니다.
+
+엄청 좋습니다.
+
+---
+
+설치
+
+```bash
+pip install duckdb
+```
+
+---
+
+예시
+
+```python
+import duckdb
+
+con = duckdb.connect("connect_ai.db")
+
+con.execute("""
+CREATE TABLE prices (
+    date DATE,
+    ticker VARCHAR,
+    close DOUBLE
+)
+""")
+```
+
+---
+
+장점
+
+```text
+SQLite보다 빠름
+
+Parquet 직접 읽음
+
+수백만행 처리 가능
+```
+
+---
+
+예시
+
+```python
+df = con.execute("""
+SELECT *
+FROM prices
+WHERE ticker='RKLB'
+""").df()
+```
+
+---
+
+Connect AI에서
+
+```text
+가격
+재무
+13F
+팩터
+```
+
+전부 저장 가능
+
+---
+
+# 5. vectorbt
+
+백테스트 엔진
+
+---
+
+설치
+
+```bash
+pip install vectorbt
+```
+
+---
+
+예시
+
+```python
+import vectorbt as vbt
+
+portfolio = vbt.Portfolio.from_signals(
+    close,
+    entries,
+    exits
+)
+
+print(portfolio.stats())
+```
+
+---
+
+얻는 것
+
+```text
+CAGR
+Sharpe
+MDD
+승률
+거래수
+```
+
+---
+
+당신의
+
+```text
+RS 상위 20%
+매주 리밸런싱
+12주 보유
+```
+
+같은 테스트를 매우 쉽게 구현할 수 있습니다.
+
+---
+
+# 내가 추천하는 실제 구조
+
+```text
+Yahoo Finance
+    ↓
+가격 데이터
+
+FMP
+    ↓
+재무 데이터
+
+SEC 13F
+    ↓
+기관 데이터
+
+모두 DuckDB 저장
+    ↓
+Feature 생성
+(RS, GM, FCF...)
+
+vectorbt
+    ↓
+팩터 검증
+
+통과 팩터만
+Screen Score 반영
+```
+
+---
+
+### 구현 난이도 순서
+
+```text
+1. Yahoo Finance      ★
+2. DuckDB             ★
+3. vectorbt           ★★
+4. FMP                ★★
+5. SEC 13F            ★★★★
+```
+
+실제로 Connect AI를 만든다면 **1차 MVP는 Yahoo + FMP + DuckDB + vectorbt만으로 먼저 구축**하는 것을 추천합니다.
+
+그 4개만으로도 이미:
+
+* RS
+* MA200 Regime
+* RSI
+* 52주 위치
+* Revenue Growth
+* Gross Margin
+* Rule of 40
+* FCF
+
+까지 백테스트할 수 있습니다.
+
+SEC 13F는 데이터 구조가 복잡하므로 **시스템이 안정화된 후 2단계로 추가하는 것이 개발 효율이 가장 좋습니다.**
+
