@@ -399,6 +399,7 @@ def main():
         "price": fast("lastPrice") or g("currentPrice"),
         "currency": fast("currency") or g("currency"),
         "marketCap": fast("marketCap") or g("marketCap"),
+        "sharesOutstanding": g("sharesOutstanding") or g("impliedSharesOutstanding"),
         "trailingPE": g("trailingPE"),
         "forwardPE": g("forwardPE"),
         "priceToSales": g("priceToSalesTrailing12Months"),
@@ -477,6 +478,26 @@ def main():
     # 시가총액: 음수·0은 불가, 상한 1e14($100조)는 사실상 데이터 오류(현존 최대 ~$4조대).
     _reject("marketCap", 1.0, 1e14, "비현실적")
 
+    # 시가총액 자체 검증: price × sharesOutstanding 계산값과 비교.
+    # yfinance marketCap이 종종 10배 오류를 내므로(IONQ 사례), KIS 교차검증 전에
+    # 먼저 자체 데이터로 이상값을 잡는다. 3배 이상 차이면 계산값을 채택.
+    _price = out.get("price")
+    _shares = out.get("sharesOutstanding")
+    _mc_raw = out.get("marketCap")
+    if _price and _shares and _mc_raw:
+        try:
+            computed_mc = float(_price) * float(_shares)
+            actual_mc = float(_mc_raw)
+            if computed_mc > 0:
+                ratio = actual_mc / computed_mc
+                if ratio > 3.0 or ratio < 0.33:
+                    data_warnings.append(
+                        f"시가총액 오류 감지: yfinance {actual_mc:.0f} vs 주가×주식수 {computed_mc:.0f} "
+                        f"(비율 {ratio:.1f}x) → 계산값으로 교체")
+                    out["marketCap"] = computed_mc
+        except (TypeError, ValueError):
+            pass
+
     # 시가총액 표시용 텍스트를 Python에서 미리 계산 — 9B 모델의 단위 변환(억/조) 실수를
     # 원천 차단한다(buy_ratio_pct와 동일 원칙: 모델에게 산수를 맡기지 않는다).
     mc = out.get("marketCap")
@@ -515,6 +536,18 @@ def main():
             else:
                 body = f"{round(a / 1e4):,}만 달러"
             out["freeCashflowText"] = neg + body
+        except (TypeError, ValueError):
+            pass
+
+    # D/E(부채비율) 표시 문자열 사전계산 — yfinance debtToEquity는 소수 비율값(ratio).
+    # 예: 0.61 = 자본 대비 부채 61%(= 0.61배). 모델이 '18.74배' 같은 레버리지로
+    # 오해하지 않도록 "%"와 "배" 둘 다 표기한 문자열로 미리 준다.
+    de = out.get("debtToEquity")
+    if de is not None:
+        try:
+            de_val = float(de)
+            pct = de_val * 100
+            out["debtToEquityText"] = f"{de_val:.2f}x ({pct:.1f}%)"
         except (TypeError, ValueError):
             pass
 
@@ -629,6 +662,7 @@ def main():
                    "'X일 전 이력, 신뢰도 낮음'으로 명시(단 trend_direction/recommendation_trend은 최신이라 신뢰 가능). "
                    "marketCapText=시가총액 표시용 문자열(미리계산됨) — 이 값만 사용할 것. marketCap 원본 수치(정수)는 보고서에 절대 표시하지 말 것. 직접 억/조 환산 산수도 금지. marketCapText 없으면 '데이터 미제공'. "
                    "freeCashflowText=잉여현금흐름(FCF) 표시용 문자열(미리계산됨, 음수는 현금유출) — 이 값을 그대로 쓰고 freeCashflow 원본으로 직접 환산 산수 하지 말 것. freeCashflowText 없으면 '데이터 미제공'. "
+                   "debtToEquityText=부채비율 표시 문자열(미리계산됨, 예: '0.61x (61.0%)') — 이 값을 그대로 쓸 것. debtToEquity 원본으로 직접 '배'/'%' 변환 금지. debtToEquityText 없으면 '데이터 미제공'. "
                    "roe/profitMargin/revenueGrowth/dividendYield는 소수값 → ×100 해서 %로. null이면 '데이터 미제공', 지어내지 말 것. "
                    "targetMean(애널리스트 목표가)와 손익비(R:R) 계산용 목표가는 전혀 다른 것 — 절대 한 문장에서 합치거나 '평균 X에서 Y까지'식으로 혼용하지 말 것. 애널리스트 목표가는 컨센서스로, R:R 목표가는 손절 기반 계산으로 따로 제시. "
                    "kis_price=한투(체결 소스) 현재가, kis_exchange=거래소. 한투와 대조해 큰 차이가 나면 data_warnings에 '한투 채택'으로 기록되며 해당 값은 이미 한투값으로 교체됨 — 교체된 값을 신뢰. "
