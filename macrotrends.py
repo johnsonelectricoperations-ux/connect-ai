@@ -10,7 +10,7 @@
 #       10년 매출 CAGR + 연속 성장 연수 → 텐배거 성장 지속성 핵심 지표.
 #       극소형주는 yfinance 신뢰도 낮으므로 Macrotrends가 주요 검증 소스.
 #
-# 데이터: Macrotrends.net (무료, 인증 불필요)
+# 데이터: Macrotrends.net fundamental_iframe.php API (무료, 인증 불필요)
 # 외부 라이브러리 없이 stdlib(urllib, re)만 사용.
 # 실패 시 {"error": ...}. AI는 error/null이면 날조 금지.
 
@@ -23,29 +23,34 @@ except Exception:
 
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                  "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5",
-    "Accept-Encoding": "gzip, deflate, br",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate",
     "Connection": "keep-alive",
 }
 
-# Macrotrends URL slug 매핑
-METRIC_SLUGS = {
-    "revenue":       "revenue",
-    "netIncome":     "net-income",
-    "eps":           "eps-earnings-per-share-diluted",
-    "fcf":           "free-cash-flow",
-    "grossProfit":   "gross-profit",
-    "operatingIncome": "operating-income",
+# fundamental_iframe.php 파라미터 매핑: metric → (type, statement)
+METRIC_PARAMS = {
+    "revenue":         ("revenue",                         "income-statement"),
+    "netIncome":       ("net-income",                      "income-statement"),
+    "eps":             ("eps-earnings-per-share-diluted",  "income-statement"),
+    "fcf":             ("free-cash-flow",                  "cash-flow-statement"),
+    "grossProfit":     ("gross-profit",                    "income-statement"),
+    "operatingIncome": ("operating-income",                "income-statement"),
 }
 
+_IFRAME_BASE = ("https://www.macrotrends.net/production/stocks/desktop"
+                "/PRODUCTION/fundamental_iframe.php")
 
-def _http_get(url, timeout=15):
-    req = urllib.request.Request(url, headers=_HEADERS)
+
+def _http_get(url, referer=None, timeout=15):
+    headers = dict(_HEADERS)
+    if referer:
+        headers["Referer"] = referer
+    req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=timeout) as r:
         raw = r.read()
-        # gzip 자동 처리
         try:
             import gzip
             if r.info().get("Content-Encoding") == "gzip":
@@ -55,36 +60,43 @@ def _http_get(url, timeout=15):
         return raw.decode("utf-8", errors="replace")
 
 
-def _find_slug(ticker):
-    """Macrotrends 검색 API로 company URL slug 조회.
-    실패 시 티커 소문자를 slug로 사용(IONQ→ionq 등 단순 케이스 대응)."""
+def _parse_iframe(html):
+    """fundamental_iframe.php 응답 파싱.
+
+    응답 형식: var chartData = [{"date":"2024-09-30","v1":prev,"v2":curr,"v3":yoy_pct}, ...]
+    v2 = 해당 연도 실제 값(연간 누계), v3 = YoY 성장률(%)
+    """
+    raw = _extract_js_array(html, "chartData")
+    if not raw:
+        return None
     try:
-        url = (f"https://www.macrotrends.net/assets/php/ticker-search.php"
-               f"?keyword={ticker}&type=stock")
-        html = _http_get(url, timeout=10)
-        data = json.loads(html)
-        if isinstance(data, list):
-            for item in data:
-                s = (item.get("s") or item.get("ticker") or "").upper()
-                if s == ticker.upper():
-                    slug = (item.get("slug") or item.get("name") or "").lower()
-                    slug = re.sub(r"[^a-z0-9-]", "-", slug).strip("-")
-                    if slug:
-                        return slug
+        rows = json.loads(raw)
     except Exception:
-        pass
-    return ticker.lower()
+        return None
+
+    annual = {}
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        date_str = str(item.get("date", ""))
+        year = date_str[:4]
+        if not year.isdigit():
+            continue
+        v2 = item.get("v2")
+        if v2 is not None:
+            try:
+                annual[year] = float(v2)
+            except (TypeError, ValueError):
+                pass
+    return annual if annual else None
 
 
-def _extract_js_value(html, varname):
-    """JS 변수값을 브레이스/브래킷 깊이 추적으로 안전하게 추출.
-    비-탐욕 정규식의 너무 일찍 끊김 문제를 해결."""
-    m = re.search(rf'var\s+{re.escape(varname)}\s*=\s*([\[{{])', html)
+def _extract_js_array(html, varname):
+    """JS 배열 변수값을 브래킷 깊이 추적으로 추출."""
+    m = re.search(rf'var\s+{re.escape(varname)}\s*=\s*(\[)', html)
     if not m:
         return None
     start = m.start(1)
-    opener = m.group(1)
-    closer = '}' if opener == '{' else ']'
     depth = 0
     in_str = False
     escape_next = False
@@ -101,90 +113,13 @@ def _extract_js_value(html, varname):
             continue
         if in_str:
             continue
-        if ch in ('{', '['):
+        if ch == '[':
             depth += 1
-        elif ch in ('}', ']'):
+        elif ch == ']':
             depth -= 1
             if depth == 0:
                 return html[start:i + 1]
     return None
-
-
-def _parse_annual(html):
-    """Macrotrends 페이지 HTML → {year: value} 연간 데이터 dict.
-
-    Macrotrends는 JavaScript 변수에 데이터를 담는다. 알려진 패턴들:
-    패턴 A: var originalData = [["2024/09/28", val1, val2], ...];
-    패턴 B: var chartData = {"2024/09/28": {"v1": val}, ...};
-    패턴 C: 같은 패턴이지만 값이 문자열로 감싸진 경우
-    패턴 D: var chartDataArr = [...]; (변수명 변형)
-    """
-    # 시도할 배열형 변수명 목록
-    for arr_var in ("originalData", "chartDataArr", "rowData", "tableData"):
-        raw = _extract_js_value(html, arr_var)
-        if raw:
-            try:
-                rows = json.loads(raw)
-                result = _rows_to_annual(rows)
-                if result:
-                    return result
-            except Exception:
-                pass
-
-    # 시도할 객체형 변수명 목록
-    for obj_var in ("chartData", "chartDataObj", "data"):
-        raw = _extract_js_value(html, obj_var)
-        if raw:
-            try:
-                obj = json.loads(raw)
-                if not isinstance(obj, dict):
-                    continue
-                annual = {}
-                for date_str, vals in obj.items():
-                    year = str(date_str)[:4]
-                    if not year.isdigit():
-                        continue
-                    if isinstance(vals, dict):
-                        for k in ("v1", "v2", "v3", "value"):
-                            v = vals.get(k)
-                            if v is not None and v != "":
-                                try:
-                                    annual[year] = float(str(v).replace(",", ""))
-                                    break
-                                except (TypeError, ValueError):
-                                    pass
-                    else:
-                        try:
-                            annual[year] = float(str(vals).replace(",", ""))
-                        except (TypeError, ValueError):
-                            pass
-                if annual:
-                    return annual
-            except Exception:
-                pass
-
-    return None
-
-
-def _rows_to_annual(rows):
-    """[[date, val, ...], ...] → {year: value} 연간 집계."""
-    annual = {}
-    for row in rows:
-        if not isinstance(row, (list, tuple)) or len(row) < 2:
-            continue
-        date_str = str(row[0])
-        year = date_str[:4]
-        if not year.isdigit():
-            continue
-        for v in row[1:]:
-            if v is not None and v != "" and v != "null":
-                try:
-                    val = float(str(v).replace(",", ""))
-                    annual[year] = val
-                    break
-                except (TypeError, ValueError):
-                    pass
-    return annual if annual else None
 
 
 def _cagr(data, years):
@@ -206,7 +141,6 @@ def _growth_stats(data):
     if not data:
         return None
     sorted_y = sorted(data.keys())
-    # 최근 10년 이하
     recent = sorted_y[-10:]
     series = [{"year": y, "value": data[y]} for y in recent]
 
@@ -219,7 +153,6 @@ def _growth_stats(data):
         else:
             yoy.append(None)
 
-    # 최근 연속 성장 연수 (역순으로 카운트)
     consecutive = 0
     for i in range(len(recent) - 1, 0, -1):
         if data[recent[i]] is not None and data[recent[i - 1]] is not None:
@@ -247,26 +180,27 @@ def _growth_stats(data):
 def fetch_history(ticker, metrics=None):
     """Macrotrends 장기 재무 역사 조회.
 
-    반환: {ticker, slug, revenue: {...}, netIncome: {...}, ...}
+    반환: {ticker, revenue: {...}, netIncome: {...}, ...}
     각 지표는 _growth_stats 결과 dict 또는 None.
-    전체 실패 시 None (graceful — 예외 삼킴).
-    screen.py·collector.py에서 import해 쓴다.
+    전체 실패 시 None (graceful).
     """
     if metrics is None:
         metrics = ["revenue", "netIncome", "eps", "fcf"]
     try:
-        slug = _find_slug(ticker)
-        result = {"ticker": ticker.upper(), "slug": slug}
+        tk = ticker.upper()
+        result = {"ticker": tk}
+        referer = f"https://www.macrotrends.net/stocks/charts/{tk}/"
         for metric in metrics:
-            ms = METRIC_SLUGS.get(metric)
-            if not ms:
+            params = METRIC_PARAMS.get(metric)
+            if not params:
                 result[metric] = None
                 continue
-            url = (f"https://www.macrotrends.net/stocks/charts"
-                   f"/{ticker.upper()}/{slug}/{ms}?freq=A")
+            type_slug, statement = params
+            url = (f"{_IFRAME_BASE}?t={tk}&type={type_slug}"
+                   f"&statement={statement}&freq=A&sub=&yb=15")
             try:
-                html = _http_get(url)
-                annual = _parse_annual(html)
+                html = _http_get(url, referer=referer)
+                annual = _parse_iframe(html)
                 result[metric] = _growth_stats(annual)
             except Exception:
                 result[metric] = None
@@ -282,8 +216,7 @@ def main():
         return
     ticker = sys.argv[1].upper().strip()
 
-    # 나머지 인자 중 지표명만 추출
-    metric_args = [a.lower() for a in sys.argv[2:] if a.lower() in METRIC_SLUGS]
+    metric_args = [a.lower() for a in sys.argv[2:] if a.lower() in METRIC_PARAMS]
     metrics = metric_args if metric_args else None
 
     try:
