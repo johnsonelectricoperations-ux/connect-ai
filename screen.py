@@ -33,9 +33,11 @@ except Exception:
 
 
 def _sanitize_floats(obj):
-    """float inf/nan → None (JSON 직렬화 불가 값 제거)."""
+    """float inf/nan → None, 문자열 "Infinity"/"NaN" → None (JSON 직렬화 불가 값 제거)."""
     if isinstance(obj, float):
         return None if (math.isinf(obj) or math.isnan(obj)) else obj
+    if isinstance(obj, str) and obj in ("Infinity", "-Infinity", "NaN"):
+        return None
     if isinstance(obj, dict):
         return {k: _sanitize_floats(v) for k, v in obj.items()}
     if isinstance(obj, list):
