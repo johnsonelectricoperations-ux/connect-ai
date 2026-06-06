@@ -388,8 +388,8 @@ function renderTable() {
   // 요약 바
   let totalVal = 0, totalCost = 0, validRows = 0;
   const byTicker = {};
-  if (pyData && pyData.holdings) {
-    pyData.holdings.forEach(h => { byTicker[h.ticker] = h; });
+  if (pyData && (pyData.holdings || pyData.portfolio)) {
+    (pyData.holdings || pyData.portfolio).forEach(h => { byTicker[h.ticker] = h; });
   }
 
   const tbody = document.getElementById('holdingsBody');
@@ -401,7 +401,7 @@ function renderTable() {
 
   tbody.innerHTML = csvRows.map((r, i) => {
     const py = byTicker[r.ticker];
-    const curPrice = py?.currentPrice ?? null;
+    const curPrice = py?.currentPrice ?? py?.price ?? null;
     const shares   = +r.shares || 0;
     const avgCost  = +r.avg_cost || 0;
     const stopP    = r.stop ? +r.stop : null;
@@ -415,7 +415,7 @@ function renderTable() {
     if (costVal) { totalCost += costVal; validRows++; }
 
     const action = py?.action || '—';
-    const badgeCls = action === 'STOP_BREACHED' ? 'stop' : action === 'TARGET_HIT' ? 'target' : action === 'ADD' ? 'add' : 'hold';
+    const badgeCls = action.includes('STOP') ? 'stop' : action.includes('TARGET') ? 'target' : action === 'ADD' || action.includes('add') ? 'add' : 'hold';
 
     return \`<tr>
       <td class="ticker-cell">\${r.ticker}</td>

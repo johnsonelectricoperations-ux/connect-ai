@@ -10,7 +10,7 @@
 # 출력은 항상 JSON 한 줄. 실패 시 {"error": "..."} 를 출력하므로,
 # AI는 error가 오면 숫자를 지어내지 말고 "데이터 확인 실패"라고 답해야 한다.
 
-import sys, json
+import sys, json, math
 
 # Windows 콘솔(cp949) 인코딩 충돌 방지 — 한글·기호 출력 시 UnicodeEncodeError로
 # 크래시하던 문제 차단. 항상 UTF-8로 출력 강제.
@@ -18,6 +18,18 @@ try:
     sys.stdout.reconfigure(encoding="utf-8")
 except Exception:
     pass
+
+
+def _sanitize_floats(obj):
+    """float inf/nan → None (JSON 직렬화 불가 값 제거)."""
+    if isinstance(obj, float):
+        return None if (math.isinf(obj) or math.isnan(obj)) else obj
+    if isinstance(obj, dict):
+        return {k: _sanitize_floats(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_floats(v) for v in obj]
+    return obj
+
 
 def analyst_extras(t):
     """등급변경 이력 + stale 플래그 + 의견추세를 dict로 반환.
@@ -569,6 +581,18 @@ def main():
         except (TypeError, ValueError):
             pass
 
+    # 배당수익률 표시용 텍스트 사전계산.
+    # yfinance는 버전별로 소수형(0.0039=0.39%)과 퍼센트형(0.39=0.39%)을 혼용.
+    # 휴리스틱: 값 >= 0.1이면 이미 % 형식으로 간주(그대로 사용), < 0.1이면 ×100.
+    dy = out.get("dividendYield")
+    if dy is not None:
+        try:
+            dy_val = float(dy)
+            pct = round(dy_val if dy_val >= 0.1 else dy_val * 100, 2)
+            out["dividendYieldPct"] = f"{pct}%"
+        except (TypeError, ValueError):
+            pass
+
     # 교차 일관성 검증 — 단일 필드는 정상 범위라도 필드 간 모순이면 신뢰 불가.
     # 부호가 연동된 지표(순이익에서 파생)끼리 어긋나면 한쪽이 오류 → 차단/경고.
     # IONQ 사례: "ROE 양수 vs 순이익률 적자/미제공" 같은 모순을 잡는다.
@@ -689,7 +713,9 @@ def main():
                    "marketCapText=시가총액 표시용 문자열(미리계산됨) — 이 값만 사용할 것. marketCap 원본 수치(정수)는 보고서에 절대 표시하지 말 것. 직접 억/조 환산 산수도 금지. marketCapText 없으면 '데이터 미제공'. "
                    "freeCashflowText=잉여현금흐름(FCF) 표시용 문자열(미리계산됨, 음수는 현금유출) — 이 값을 그대로 쓰고 freeCashflow 원본으로 직접 환산 산수 하지 말 것. freeCashflowText 없으면 '데이터 미제공'. "
                    "debtToEquityText=부채비율 표시 문자열(미리계산됨, 예: '0.61x (61.0%)') — 이 값을 그대로 쓸 것. debtToEquity 원본으로 직접 '배'/'%' 변환 금지. debtToEquityText 없으면 '데이터 미제공'. "
-                   "roe/profitMargin/revenueGrowth/dividendYield는 소수값 → ×100 해서 %로. null이면 '데이터 미제공', 지어내지 말 것. "
+                   "roe/profitMargin/revenueGrowth는 소수값 → ×100 해서 %로. "
+                   "dividendYieldPct=배당수익률 표시용 문자열(미리계산됨, 예: '0.45%') — 이 값을 그대로 표시. dividendYield 원본으로 직접 계산 금지. "
+                   "null이면 '데이터 미제공', 지어내지 말 것. "
                    "targetMean(애널리스트 목표가)와 손익비(R:R) 계산용 목표가는 전혀 다른 것 — 절대 한 문장에서 합치거나 '평균 X에서 Y까지'식으로 혼용하지 말 것. 애널리스트 목표가는 컨센서스로, R:R 목표가는 손절 기반 계산으로 따로 제시. "
                    "kis_price=한투(체결 소스) 현재가, kis_exchange=거래소. 한투와 대조해 큰 차이가 나면 data_warnings에 '한투 채택'으로 기록되며 해당 값은 이미 한투값으로 교체됨 — 교체된 값을 신뢰. "
                    "data_warnings가 있으면 해당 필드는 신뢰 불가로 걸러진 것 — 그 수치를 복원·추정하지 말 것. "
@@ -698,7 +724,7 @@ def main():
     # marketCapText/freeCashflowText/debtToEquityText로 대체됨.
     for _k in ("marketCap", "freeCashflow", "sharesOutstanding", "debtToEquity"):
         out.pop(_k, None)
-    print(json.dumps(out, ensure_ascii=False))
+    print(json.dumps(_sanitize_floats(out), ensure_ascii=False))
 
 
 if __name__ == "__main__":

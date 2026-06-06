@@ -19051,10 +19051,16 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                 || process.cwd();
             if (forcedArgs === '__panel__watchlist') {
                 vscode.commands.executeCommand('connectAiLab.watchlist.open');
-                return; // 패널만 열고 LLM 호출 불필요
+                this._view?.webview.postMessage({ type: 'streamStart' });
+                this._view?.webview.postMessage({ type: 'streamChunk', value: '관심종목 패널을 열었습니다.' });
+                this._view?.webview.postMessage({ type: 'streamEnd' });
+                return;
             }
             if (forcedArgs === '__panel__portfolio') {
                 vscode.commands.executeCommand('connectAiLab.portfolio.open');
+                this._view?.webview.postMessage({ type: 'streamStart' });
+                this._view?.webview.postMessage({ type: 'streamChunk', value: '포트폴리오 패널을 열었습니다.' });
+                this._view?.webview.postMessage({ type: 'streamEnd' });
                 return;
             }
             if (comprehensiveTicker) {

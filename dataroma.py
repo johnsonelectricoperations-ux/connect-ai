@@ -23,10 +23,13 @@ except Exception:
 
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5",
+                  "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
     "Referer": "https://www.dataroma.com/",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
 }
 
 _BASE = "https://www.dataroma.com"
@@ -37,9 +40,18 @@ def _http_get(url, timeout=15):
     with urllib.request.urlopen(req, timeout=timeout) as r:
         raw = r.read()
         try:
-            import gzip
-            if r.info().get("Content-Encoding") == "gzip":
+            import gzip, zlib
+            enc = r.info().get("Content-Encoding", "")
+            if enc == "gzip":
                 raw = gzip.decompress(raw)
+            elif enc == "deflate":
+                raw = zlib.decompress(raw)
+            elif enc == "br":
+                try:
+                    import brotli
+                    raw = brotli.decompress(raw)
+                except ImportError:
+                    pass
         except Exception:
             pass
         return raw.decode("utf-8", errors="replace")
@@ -88,17 +100,10 @@ def _fetch_stock_holders(ticker):
 
     holders = []
 
-    # 보유 매니저 테이블 파싱
-    # <td><a href="m/holdings.php?m=BRK&amp;s=AAPL">Berkshire Hathaway</a></td>
-    # <td>12.4%</td>  (포트폴리오 비중)
-    # <td>915,560,382</td>  (보유 주수)
-    # <td>$138,273,801,780</td>  (평가액)
-    # <td>Q1 2024</td>  (마지막 신고)
-    # <td>Buy / Add / Reduce / Sell</td>  (최근 액션)
-
+    # 보유 매니저 테이블 파싱 — <tr>...</tr> 전체를 추출 (속성 유무 무관)
     rows = re.findall(
-        r'<tr[^>]*>\s*(<td>.*?</tr>)',
-        html, re.IGNORECASE | re.DOTALL
+        r'<tr[^>]*>([\s\S]*?)</tr>',
+        html, re.IGNORECASE
     )
 
     for row in rows:
@@ -166,8 +171,8 @@ def _fetch_aggregated(limit=20):
 
     stocks = []
     rows = re.findall(
-        r'<tr[^>]*class=["\']?[^"\']*["\']?[^>]*>\s*(<td>.*?)</tr>',
-        html, re.IGNORECASE | re.DOTALL
+        r'<tr[^>]*>([\s\S]*?)</tr>',
+        html, re.IGNORECASE
     )
 
     for row in rows:

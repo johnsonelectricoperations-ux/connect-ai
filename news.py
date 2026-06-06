@@ -319,7 +319,8 @@ def main():
         "sentiment_summary.signal: bullish=긍정 60%+, bearish=부정 60%+, "
         "cautious=부정 40%+, mixed=혼조. "
         "URL은 원문 링크. null이면 데이터 미제공 — 지어내지 말 것. "
-        "뉴스 내용을 요약할 때는 title·description 필드만 사용 — 없는 내용 추가 금지."
+        "뉴스 내용을 요약할 때는 title·published·description 필드만 사용 — 없는 내용 추가 금지. "
+        "published=뉴스 날짜(YYYY-MM-DD HH:MM UTC). 각 뉴스 항목에 날짜를 반드시 표시할 것."
     )
     print(json.dumps(out, ensure_ascii=False))
 

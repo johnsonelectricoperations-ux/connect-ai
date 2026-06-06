@@ -20,7 +20,7 @@
 #
 # 출력 JSON (점수 내림차순). UTF-8 강제, 이모지 금지, 계산은 Python.
 
-import sys, json, os
+import sys, json, os, math
 
 # 스코어링 알고리즘 버전 — docs/investment/SCORING.md와 항상 동기화.
 # 항목·가중치·임계값 변경 시 반드시 버전 올리고 SCORING.md 변경이력 추가.
@@ -30,6 +30,17 @@ try:
     sys.stdout.reconfigure(encoding="utf-8")
 except Exception:
     pass
+
+
+def _sanitize_floats(obj):
+    """float inf/nan → None (JSON 직렬화 불가 값 제거)."""
+    if isinstance(obj, float):
+        return None if (math.isinf(obj) or math.isnan(obj)) else obj
+    if isinstance(obj, dict):
+        return {k: _sanitize_floats(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_floats(v) for v in obj]
+    return obj
 
 
 def load_watchlist(path):
@@ -439,7 +450,7 @@ def main():
         except Exception:
             pass  # watchlist.py 없거나 오류여도 screen 결과는 정상 출력
 
-    print(json.dumps(out, ensure_ascii=False))
+    print(json.dumps(_sanitize_floats(out), ensure_ascii=False))
 
 
 if __name__ == "__main__":

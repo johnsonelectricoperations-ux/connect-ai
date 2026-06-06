@@ -184,6 +184,7 @@ def cmd_list(db):
             "note": meta.get("note") or "",
             "earningsDate": meta.get("earningsDate"),
             "lastScore": meta.get("lastScore"),
+            "addedBy": meta.get("addedBy", "manual"),
         }
         if alert:
             entry["earningsAlert"] = alert

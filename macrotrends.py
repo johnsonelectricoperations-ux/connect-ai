@@ -76,49 +76,92 @@ def _find_slug(ticker):
     return ticker.lower()
 
 
+def _extract_js_value(html, varname):
+    """JS 변수값을 브레이스/브래킷 깊이 추적으로 안전하게 추출.
+    비-탐욕 정규식의 너무 일찍 끊김 문제를 해결."""
+    m = re.search(rf'var\s+{re.escape(varname)}\s*=\s*([\[{{])', html)
+    if not m:
+        return None
+    start = m.start(1)
+    opener = m.group(1)
+    closer = '}' if opener == '{' else ']'
+    depth = 0
+    in_str = False
+    escape_next = False
+    for i in range(start, len(html)):
+        ch = html[i]
+        if escape_next:
+            escape_next = False
+            continue
+        if ch == '\\' and in_str:
+            escape_next = True
+            continue
+        if ch == '"':
+            in_str = not in_str
+            continue
+        if in_str:
+            continue
+        if ch in ('{', '['):
+            depth += 1
+        elif ch in ('}', ']'):
+            depth -= 1
+            if depth == 0:
+                return html[start:i + 1]
+    return None
+
+
 def _parse_annual(html):
     """Macrotrends 페이지 HTML → {year: value} 연간 데이터 dict.
 
-    Macrotrends는 JavaScript 변수에 데이터를 담는다. 알려진 두 가지 패턴:
+    Macrotrends는 JavaScript 변수에 데이터를 담는다. 알려진 패턴들:
     패턴 A: var originalData = [["2024/09/28", val1, val2], ...];
     패턴 B: var chartData = {"2024/09/28": {"v1": val}, ...};
+    패턴 C: 같은 패턴이지만 값이 문자열로 감싸진 경우
+    패턴 D: var chartDataArr = [...]; (변수명 변형)
     """
-    # 패턴 A
-    m = re.search(
-        r'var\s+originalData\s*=\s*(\[\s*\[[\s\S]*?\]\s*\])\s*;',
-        html
-    )
-    if m:
-        try:
-            rows = json.loads(m.group(1))
-            return _rows_to_annual(rows)
-        except Exception:
-            pass
+    # 시도할 배열형 변수명 목록
+    for arr_var in ("originalData", "chartDataArr", "rowData", "tableData"):
+        raw = _extract_js_value(html, arr_var)
+        if raw:
+            try:
+                rows = json.loads(raw)
+                result = _rows_to_annual(rows)
+                if result:
+                    return result
+            except Exception:
+                pass
 
-    # 패턴 B
-    m = re.search(
-        r'var\s+chartData\s*=\s*(\{[\s\S]*?\})\s*;',
-        html
-    )
-    if m:
-        try:
-            obj = json.loads(m.group(1))
-            annual = {}
-            for date_str, vals in obj.items():
-                year = date_str[:4]
-                if not year.isdigit():
+    # 시도할 객체형 변수명 목록
+    for obj_var in ("chartData", "chartDataObj", "data"):
+        raw = _extract_js_value(html, obj_var)
+        if raw:
+            try:
+                obj = json.loads(raw)
+                if not isinstance(obj, dict):
                     continue
-                for k in ("v1", "v2", "v3"):
-                    v = vals.get(k)
-                    if v is not None and v != "":
+                annual = {}
+                for date_str, vals in obj.items():
+                    year = str(date_str)[:4]
+                    if not year.isdigit():
+                        continue
+                    if isinstance(vals, dict):
+                        for k in ("v1", "v2", "v3", "value"):
+                            v = vals.get(k)
+                            if v is not None and v != "":
+                                try:
+                                    annual[year] = float(str(v).replace(",", ""))
+                                    break
+                                except (TypeError, ValueError):
+                                    pass
+                    else:
                         try:
-                            annual[year] = float(v)
-                            break
+                            annual[year] = float(str(vals).replace(",", ""))
                         except (TypeError, ValueError):
                             pass
-            return annual if annual else None
-        except Exception:
-            pass
+                if annual:
+                    return annual
+            except Exception:
+                pass
 
     return None
 
