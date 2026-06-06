@@ -192,6 +192,70 @@ def test_value_momentum():
 
 
 # ─────────────────────────────────────────────
+# 9. Macrotrends 성장 지속성 보너스
+# ─────────────────────────────────────────────
+def test_macrotrends_bonus():
+    base = {
+        "marketCap": 500_000_000,
+        "revenueGrowth": 0.20,
+        "profitMargins": 0.05,
+        "debtToEquity": 0.3,
+        "pos52": 50,
+        "rsi14": 55,
+        "is_micro": False,
+    }
+
+    # 연속 5년 성장 + CAGR 30% → +4점 보너스
+    mt_strong = {
+        "consecutive_growth_years": 5,
+        "cagr_5yr": 0.32,
+        "positive_growth_years": 8,
+        "total_years": 9,
+    }
+    s_base, _ = score_tenbagger(base)
+    s_mt, reasons = score_tenbagger({**base, "mt_revenue": mt_strong})
+    check("MT 강한 성장: mt 포함 점수 > mt 없음 점수", s_mt > s_base, f"base={s_base} mt={s_mt}")
+    check("MT 연속성장 5년 reasons 포함", any("연속성장 5년" in r for r in reasons), f"reasons={reasons}")
+    check("MT CAGR reasons 포함", any("CAGR" in r for r in reasons), f"reasons={reasons}")
+
+    # 연속 3년 + CAGR 20% → +2점 보너스
+    mt_mid = {
+        "consecutive_growth_years": 3,
+        "cagr_5yr": 0.20,
+        "positive_growth_years": 5,
+        "total_years": 8,
+    }
+    s_mid, reasons_mid = score_tenbagger({**base, "mt_revenue": mt_mid})
+    check("MT 중간 성장: 연속3년 reasons 포함", any("연속성장 3년" in r for r in reasons_mid), f"reasons={reasons_mid}")
+    check("MT 중간 성장 score 범위", s_base < s_mid < s_mt, f"base={s_base} mid={s_mid} strong={s_mt}")
+
+    # 역성장 → 페널티
+    mt_neg = {
+        "consecutive_growth_years": 0,
+        "cagr_5yr": -0.05,
+        "positive_growth_years": 2,
+        "total_years": 8,
+    }
+    s_neg, reasons_neg = score_tenbagger({**base, "mt_revenue": mt_neg})
+    check("MT 역성장: score <= base", s_neg <= s_base, f"base={s_base} neg={s_neg}")
+    check("MT 역성장 reasons 포함", any("역성장" in r for r in reasons_neg), f"reasons={reasons_neg}")
+
+    # 성장 일관성 낮음 (<50%) → 페널티
+    mt_inconsistent = {
+        "consecutive_growth_years": 1,
+        "cagr_5yr": 0.10,
+        "positive_growth_years": 2,
+        "total_years": 7,
+    }
+    s_inc, reasons_inc = score_tenbagger({**base, "mt_revenue": mt_inconsistent})
+    check("MT 일관성 낮음 reasons 포함", any("일관성" in r for r in reasons_inc), f"reasons={reasons_inc}")
+
+    # mt_revenue 없으면 기존 점수 그대로
+    s_no_mt, _ = score_tenbagger(base)
+    check("mt_revenue 없음 → score 변동 없음", s_no_mt == s_base, f"no_mt={s_no_mt} base={s_base}")
+
+
+# ─────────────────────────────────────────────
 # 실행
 # ─────────────────────────────────────────────
 def test_version():
@@ -199,6 +263,8 @@ def test_version():
     parts = SCORING_VERSION.split(".")
     check("SCORING_VERSION 형식 X.Y.Z", len(parts) == 3 and all(p.isdigit() for p in parts),
           SCORING_VERSION)
+    check("SCORING_VERSION >= 1.1.0",
+          tuple(int(p) for p in parts) >= (1, 1, 0), SCORING_VERSION)
 
 
 if __name__ == "__main__":
@@ -211,6 +277,7 @@ if __name__ == "__main__":
     run("6. 초미니캡 페널티", test_nano_cap_penalty)
     run("7. RSI14 계산", test_rsi)
     run("8. value/momentum 전략", test_value_momentum)
+    run("9. Macrotrends 성장 지속성 보너스", test_macrotrends_bonus)
 
     total = PASS + FAIL
     print(f"\n{'='*40}")

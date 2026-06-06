@@ -24,7 +24,7 @@ import sys, json, os
 
 # 스코어링 알고리즘 버전 — docs/investment/SCORING.md와 항상 동기화.
 # 항목·가중치·임계값 변경 시 반드시 버전 올리고 SCORING.md 변경이력 추가.
-SCORING_VERSION = "1.0.0"
+SCORING_VERSION = "1.1.0"
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -245,6 +245,28 @@ def score_tenbagger(m):
             s += 1; reasons.append(f'RSI 적정 {rsi}')
         elif rsi > 75:
             s -= 1; reasons.append(f'RSI 과매수 {rsi}')
+
+    # 7. Macrotrends 성장 지속성 보너스 (선택적 — mt_revenue 있을 때만)
+    # fetch_history()["revenue"] 결과를 m["mt_revenue"]로 전달하면 추가 점수.
+    mt = m.get("mt_revenue")
+    if mt:
+        consec = mt.get("consecutive_growth_years", 0) or 0
+        cagr5 = mt.get("cagr_5yr")
+        pos_yrs = mt.get("positive_growth_years", 0) or 0
+        total_yrs = mt.get("total_years", 1) or 1
+        if consec >= 5:
+            s += 2; reasons.append(f'Macrotrends 연속성장 {consec}년')
+        elif consec >= 3:
+            s += 1; reasons.append(f'Macrotrends 연속성장 {consec}년')
+        if cagr5 is not None:
+            if cagr5 >= 0.30:
+                s += 2; reasons.append(f'Macrotrends 5yr CAGR {round(cagr5*100,1)}%')
+            elif cagr5 >= 0.15:
+                s += 1; reasons.append(f'Macrotrends 5yr CAGR {round(cagr5*100,1)}%')
+            elif cagr5 < 0:
+                s -= 1; reasons.append(f'Macrotrends 5yr 매출 역성장 {round(cagr5*100,1)}%')
+        if total_yrs >= 5 and pos_yrs / total_yrs < 0.5:
+            s -= 1; reasons.append(f'Macrotrends 성장 일관성 낮음 ({pos_yrs}/{total_yrs}년)')
 
     return round(s, 1), reasons
 
