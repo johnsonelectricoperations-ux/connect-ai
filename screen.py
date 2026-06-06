@@ -24,7 +24,7 @@ import sys, json, os
 
 # 스코어링 알고리즘 버전 — docs/investment/SCORING.md와 항상 동기화.
 # 항목·가중치·임계값 변경 시 반드시 버전 올리고 SCORING.md 변경이력 추가.
-SCORING_VERSION = "1.2.0"
+SCORING_VERSION = "1.3.0"
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -279,6 +279,16 @@ def score_tenbagger(m):
         elif dt == "single_holder":
             s += 1; reasons.append('슈퍼인베스터 1~2명 보유 (single_holder)')
         # no_holder → 점수 변동 없음
+
+    # 9. 뉴스 감성 보너스 (선택적 — news_signal 있을 때만)
+    # fetch_news()["sentiment_summary"]["signal"] 값을 m["news_signal"]로 전달.
+    ns = m.get("news_signal")
+    if ns:
+        if ns == "bullish":
+            s += 1; reasons.append('뉴스 감성 긍정(bullish)')
+        elif ns == "bearish":
+            s -= 1; reasons.append('뉴스 감성 부정(bearish)')
+        # mixed/cautious → 변동 없음
 
     return round(s, 1), reasons
 

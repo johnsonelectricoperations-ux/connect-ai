@@ -299,6 +299,44 @@ def test_dataroma_bonus():
 
 
 # ─────────────────────────────────────────────
+# 11. 뉴스 감성 보너스
+# ─────────────────────────────────────────────
+def test_news_sentiment_bonus():
+    base = {
+        "marketCap": 500_000_000,
+        "revenueGrowth": 0.20,
+        "profitMargins": 0.05,
+        "debtToEquity": 0.3,
+        "pos52": 50,
+        "rsi14": 55,
+        "is_micro": False,
+    }
+    s_base, _ = score_tenbagger(base)
+
+    # bullish → +1
+    s_bull, r_bull = score_tenbagger({**base, "news_signal": "bullish"})
+    check("뉴스 bullish: +1", round(s_bull - s_base, 1) == 1.0, f"diff={round(s_bull-s_base,1)}")
+    check("뉴스 bullish reasons 포함", any("bullish" in r for r in r_bull), f"reasons={r_bull}")
+
+    # bearish → -1
+    s_bear, r_bear = score_tenbagger({**base, "news_signal": "bearish"})
+    check("뉴스 bearish: -1", round(s_bear - s_base, 1) == -1.0, f"diff={round(s_bear-s_base,1)}")
+    check("뉴스 bearish reasons 포함", any("bearish" in r for r in r_bear), f"reasons={r_bear}")
+
+    # mixed → 변동 없음
+    s_mix, _ = score_tenbagger({**base, "news_signal": "mixed"})
+    check("뉴스 mixed: 변동 없음", s_mix == s_base, f"mix={s_mix} base={s_base}")
+
+    # cautious → 변동 없음
+    s_cau, _ = score_tenbagger({**base, "news_signal": "cautious"})
+    check("뉴스 cautious: 변동 없음", s_cau == s_base, f"cau={s_cau} base={s_base}")
+
+    # news_signal 없음 → 변동 없음
+    s_nd, _ = score_tenbagger(base)
+    check("뉴스 없음: 변동 없음", s_nd == s_base, f"nd={s_nd} base={s_base}")
+
+
+# ─────────────────────────────────────────────
 # 실행
 # ─────────────────────────────────────────────
 def test_version():
@@ -306,8 +344,8 @@ def test_version():
     parts = SCORING_VERSION.split(".")
     check("SCORING_VERSION 형식 X.Y.Z", len(parts) == 3 and all(p.isdigit() for p in parts),
           SCORING_VERSION)
-    check("SCORING_VERSION >= 1.2.0",
-          tuple(int(p) for p in parts) >= (1, 2, 0), SCORING_VERSION)
+    check("SCORING_VERSION >= 1.3.0",
+          tuple(int(p) for p in parts) >= (1, 3, 0), SCORING_VERSION)
 
 
 if __name__ == "__main__":
@@ -322,6 +360,7 @@ if __name__ == "__main__":
     run("8. value/momentum 전략", test_value_momentum)
     run("9. Macrotrends 성장 지속성 보너스", test_macrotrends_bonus)
     run("10. Dataroma 슈퍼인베스터 보너스", test_dataroma_bonus)
+    run("11. 뉴스 감성 보너스", test_news_sentiment_bonus)
 
     total = PASS + FAIL
     print(f"\n{'='*40}")
