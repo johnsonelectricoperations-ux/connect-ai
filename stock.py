@@ -226,6 +226,11 @@ def main():
                 "atr14": atr(14),
             }
 
+            summary["note"] = ("trend=미리계산된 추세 레이블 — 이 문자열을 그대로 인용할 것. "
+                               "임의로 'Pullback', '상승추세', '눌림목' 같은 다른 단어로 바꾸지 말 것. "
+                               "예: trend가 'weakening(...)' 이면 'weakening'으로 제시, 절대 'Pullback'으로 바꾸지 말 것. "
+                               "rsi_state=overbought(>=70)/oversold(<=30)/neutral 중 하나(미리계산됨) — 그대로 쓸 것. "
+                               "atr14=최근 14일 평균 변동폭(ATR, 달러). null이면 데이터 미제공.")
             print(json.dumps({"ticker": ticker, "summary": summary, "history": rows}))
         except Exception as e:
             print(json.dumps({"error": f"history 조회 실패: {e}"}, ensure_ascii=False))
@@ -622,7 +627,7 @@ def main():
                    "recent_rating_changes=증권사별 등급변경 이력. "
                    "ratings_stale=true면 등급변경이 ratings_days_old일 전이라 오래됨 → '최근 변경'이라 하지 말고 "
                    "'X일 전 이력, 신뢰도 낮음'으로 명시(단 trend_direction/recommendation_trend은 최신이라 신뢰 가능). "
-                   "marketCapText=시가총액 표시용 문자열(미리계산됨) — 이 값을 그대로 쓰고 marketCap 원본으로 직접 억/조 환산 산수 하지 말 것. marketCapText 없으면 '데이터 미제공'. "
+                   "marketCapText=시가총액 표시용 문자열(미리계산됨) — 이 값만 사용할 것. marketCap 원본 수치(정수)는 보고서에 절대 표시하지 말 것. 직접 억/조 환산 산수도 금지. marketCapText 없으면 '데이터 미제공'. "
                    "freeCashflowText=잉여현금흐름(FCF) 표시용 문자열(미리계산됨, 음수는 현금유출) — 이 값을 그대로 쓰고 freeCashflow 원본으로 직접 환산 산수 하지 말 것. freeCashflowText 없으면 '데이터 미제공'. "
                    "roe/profitMargin/revenueGrowth/dividendYield는 소수값 → ×100 해서 %로. null이면 '데이터 미제공', 지어내지 말 것. "
                    "targetMean(애널리스트 목표가)와 손익비(R:R) 계산용 목표가는 전혀 다른 것 — 절대 한 문장에서 합치거나 '평균 X에서 Y까지'식으로 혼용하지 말 것. 애널리스트 목표가는 컨센서스로, R:R 목표가는 손절 기반 계산으로 따로 제시. "
