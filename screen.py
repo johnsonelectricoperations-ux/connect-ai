@@ -22,6 +22,10 @@
 
 import sys, json, os
 
+# 스코어링 알고리즘 버전 — SCORING.md와 항상 동기화.
+# 항목·가중치·임계값 변경 시 반드시 버전 올리고 SCORING.md 변경이력 추가.
+SCORING_VERSION = "1.0.0"
+
 try:
     sys.stdout.reconfigure(encoding="utf-8")
 except Exception:
@@ -364,6 +368,7 @@ def main():
 
     out = {
         "strategy": strat,
+        "scoring_version": SCORING_VERSION,
         "ranked": results,
         "failed": failed,
         "note": ("score 높을수록 해당 전략에 부합. reasons=가점 근거. "

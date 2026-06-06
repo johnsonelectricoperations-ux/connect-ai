@@ -13,7 +13,7 @@ try:
 except Exception:
     pass
 
-from screen import score_tenbagger, score_value, score_momentum, rsi14
+from screen import score_tenbagger, score_value, score_momentum, rsi14, SCORING_VERSION
 
 PASS = 0
 FAIL = 0
@@ -194,7 +194,15 @@ def test_value_momentum():
 # ─────────────────────────────────────────────
 # 실행
 # ─────────────────────────────────────────────
+def test_version():
+    check("SCORING_VERSION 존재", bool(SCORING_VERSION), SCORING_VERSION)
+    parts = SCORING_VERSION.split(".")
+    check("SCORING_VERSION 형식 X.Y.Z", len(parts) == 3 and all(p.isdigit() for p in parts),
+          SCORING_VERSION)
+
+
 if __name__ == "__main__":
+    run("0. 버전 명세", test_version)
     run("1. 극소형주 시총 구간", test_micro_cap_scoring)
     run("2. 소형주+고성장 최고점수", test_smallcap_highgrowth)
     run("3. 중형주+저성장 낮은점수", test_midcap_lowgrowth)
