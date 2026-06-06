@@ -690,6 +690,9 @@ function _detectInvestmentCommand(prompt: string): string | null {
     const hasAnalyst = /월가|애널리스트|analyst|등급\s*변경|목표가|투자의견|컨센서스/.test(lp);
     // hasFundamental: "재무" 단독, "PER·EPS·ROE" 단독, "이익" 쿼리도 포함.
     const hasFundamental = /밸류에이션|valuation|적정주가|재무\s*분석|펀더멘털|per\s*적정|저평가|고평가|재무\s*(어때|봐|알려|보여|점검)|재무제표|eps\s*(어때|분석)|roe\s*(어때|분석)|per\s*(어때|높|낮|분석)|매출\s*(성장|어때)|이익\s*(어때|분석|성장|마진)|순이익|영업이익/.test(lp);
+    const hasNews = /뉴스\s*(어때|알려|보여|봐|뭐|있어|조회)|최근\s*뉴스|news/.test(lp);
+    const hasWatchlistPanel = /관심\s*종목\s*(보여|열어|관리|봐|보기|UI|창)|watchlist\s*(보여|열어|open)/.test(lp);
+    const hasPortfolioPanel = /포트폴리오\s*(열어|보여|UI|창|입력)|매수\s*(입력|추가|기록)|종목\s*(입력|기록|추가)\s*(하|해|할)/.test(lp);
 
     // 발굴 테마 → suggest 모드
     const THEMES: Record<string,string> = {
@@ -701,8 +704,11 @@ function _detectInvestmentCommand(prompt: string): string | null {
     };
 
     // 우선순위 분기
+    if (hasWatchlistPanel) return `__panel__watchlist`;
+    if (hasPortfolioPanel) return `__panel__portfolio`;
     if (hasBacktest && ticker) return wantsRsi ? `backtest.py ${ticker} rsi` : `backtest.py ${ticker}`;
     if (hasPortfolio) return `portfolio.py`;
+    if (hasNews && ticker) return `news.py ${ticker}`;
     if (hasScreen) {
         // 텐배거 키워드 → tenbagger 전략으로 직접 라우팅
         if (/텐배거|10배|tenbagger|ten.?bagger/.test(lp)) {
@@ -19043,6 +19049,14 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             const _toolRoot = () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
                 || (() => { try { const d = getCompanyDir(); return d && fs.existsSync(d) ? d : undefined; } catch { return undefined; } })()
                 || process.cwd();
+            if (forcedArgs === '__panel__watchlist') {
+                vscode.commands.executeCommand('connectAiLab.watchlist.open');
+                return; // 패널만 열고 LLM 호출 불필요
+            }
+            if (forcedArgs === '__panel__portfolio') {
+                vscode.commands.executeCommand('connectAiLab.portfolio.open');
+                return;
+            }
             if (comprehensiveTicker) {
                 const tk = comprehensiveTicker;
                 const py = _pythonCmd();
@@ -19111,7 +19125,22 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
                     forcedToolContext = `\n\n[보유 포트폴리오 점검 — 아래 실데이터(JSON)만 인용하라. 새 <run_command>를 출력하지 말 것. ${actionNote}\n🈲 언어 규칙: 반드시 한국어로만 작성하라. 중국어·한자·간체자(均未·分析·持仓 등)를 단 한 글자도 섞지 마라.\n🚫 환각 절대 금지: JSON에 있는 숫자만 사용하고, 없는 항목(뉴스·전망·목표가 등)은 지어내지 마라.\n📋 출력 구조: ① 전체 손익 요약(total_unrealized_pl) ② 액션 필요 종목(우선, 각 매매전략) ③ 나머지 보유 한 줄평. 한국어로만 작성.\n\n${forcedToolOutput}]`;
                     forcedToolNotice = `\n> 🖥️ **[자동 실행]** 포트폴리오 점검${detailTickers.length ? ` + 액션종목 ${detailTickers.join('·')} 손절·포지션` : ''}\n\n`;
                 }
-            } else if (forcedArgs.startsWith('screen.py')) {
+            } else if (forcedArgs && forcedArgs.startsWith('news.py')) {
+                /* news.py TICKER — 최신 뉴스 + 감성 요약 */
+                const py = _pythonCmd();
+                const toolRoot = _toolRoot();
+                let newsOut = '';
+                try {
+                    const r = await runCommandCaptured(`${py} ${forcedArgs}`, toolRoot, () => { /* silent */ }, 20 * 1000);
+                    newsOut = (r.output || '').toString().slice(0, 4000);
+                } catch (e: any) {
+                    newsOut = JSON.stringify({ error: `뉴스 조회 실패: ${e?.message || e}` });
+                }
+                forcedToolOutput  = newsOut;
+                forcedFullCmd     = `${_pythonCmd()} ${forcedArgs}`;
+                forcedToolContext = `\n\n[뉴스 데이터 — 아래 JSON만 인용하라. 새 <run_command> 출력 금지.\n🈲 반드시 한국어로만 작성. 🚫 JSON에 없는 정보 지어내기 절대 금지.\n출력 구조: ① 감성 요약(signal·positive_pct·negative_pct) ② 주요 뉴스 3~5건(title+published) ③ 한 줄 투자 시사점.\n\n${forcedToolOutput}]`;
+                forcedToolNotice  = `\n> 🖥️ **[자동 실행]** ${forcedArgs}\n\n`;
+            } else if (forcedArgs && forcedArgs.startsWith('screen.py')) {
                 /* v3.1.0 — 발굴 통합(Step A). screen.py 랭킹 후 상위 1~2개 후보에
                    stock.py TICKER risk를 추가 프리페치 → 진입가·손절·목표·비중까지
                    한 흐름으로 검증. 발굴(핵심 용도 #1)을 추천까지 잇는다. */

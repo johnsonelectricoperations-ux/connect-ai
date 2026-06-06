@@ -429,6 +429,16 @@ def main():
     if suggest_mode and suggest_theme:
         out["theme"] = suggest_theme
         out["universe_size"] = len(tickers)
+
+    # suggest 모드에서 상위 5개를 watchlist.json에 자동 등록 (addedBy="auto")
+    if suggest_mode:
+        try:
+            from watchlist import add_auto
+            for r in results[:5]:
+                add_auto(r["ticker"], r.get("score"))
+        except Exception:
+            pass  # watchlist.py 없거나 오류여도 screen 결과는 정상 출력
+
     print(json.dumps(out, ensure_ascii=False))
 
 

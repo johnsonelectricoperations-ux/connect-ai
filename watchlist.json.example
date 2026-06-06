@@ -1,0 +1,16 @@
+{
+  "IONQ": {
+    "added": "2026-01-01",
+    "note": "양자컴퓨터 순수 플레이 1위",
+    "earningsDate": null,
+    "lastScore": null,
+    "addedBy": "manual"
+  },
+  "AAPL": {
+    "added": "2026-01-01",
+    "note": "",
+    "earningsDate": null,
+    "lastScore": null,
+    "addedBy": "manual"
+  }
+}

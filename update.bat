@@ -5,13 +5,17 @@ echo [1/4] Pulling latest code...
 git pull origin claude/charming-hopper-M7yZf
 if errorlevel 1 goto :error
 
-echo [2/4] Copying tools (stock, macro, backtest, sec) to workspace...
-copy /Y C:\project_list\connect-ai\stock.py C:\project_list\NA-stock-ai\stock.py
-copy /Y C:\project_list\connect-ai\macro.py C:\project_list\NA-stock-ai\macro.py
-copy /Y C:\project_list\connect-ai\backtest.py C:\project_list\NA-stock-ai\backtest.py
-copy /Y C:\project_list\connect-ai\sec.py C:\project_list\NA-stock-ai\sec.py
-copy /Y C:\project_list\connect-ai\portfolio.py C:\project_list\NA-stock-ai\portfolio.py
-copy /Y C:\project_list\connect-ai\screen.py C:\project_list\NA-stock-ai\screen.py
+echo [2/4] Copying tools to workspace...
+copy /Y C:\project_list\connect-ai\stock.py        C:\project_list\NA-stock-ai\stock.py
+copy /Y C:\project_list\connect-ai\macro.py        C:\project_list\NA-stock-ai\macro.py
+copy /Y C:\project_list\connect-ai\backtest.py     C:\project_list\NA-stock-ai\backtest.py
+copy /Y C:\project_list\connect-ai\sec.py          C:\project_list\NA-stock-ai\sec.py
+copy /Y C:\project_list\connect-ai\portfolio.py    C:\project_list\NA-stock-ai\portfolio.py
+copy /Y C:\project_list\connect-ai\screen.py       C:\project_list\NA-stock-ai\screen.py
+copy /Y C:\project_list\connect-ai\macrotrends.py  C:\project_list\NA-stock-ai\macrotrends.py
+copy /Y C:\project_list\connect-ai\dataroma.py     C:\project_list\NA-stock-ai\dataroma.py
+copy /Y C:\project_list\connect-ai\news.py         C:\project_list\NA-stock-ai\news.py
+copy /Y C:\project_list\connect-ai\watchlist.py    C:\project_list\NA-stock-ai\watchlist.py
 
 echo [3/4] Deploying agent skills to brain company folder...
 xcopy /E /I /Y "C:\project_list\connect-ai\agent-skills" "C:\project_list\ai_agent_antigravity\_company\_agents"
@@ -19,9 +23,10 @@ xcopy /E /I /Y "C:\project_list\connect-ai\agent-skills" "C:\project_list\ai_age
 echo [3a/4] Deploying investment knowledge + templates to brain wiki...
 xcopy /E /I /Y "C:\project_list\connect-ai\knowledge-pack\10_Wiki" "C:\project_list\ai_agent_antigravity\10_Wiki"
 
-echo Seeding portfolio.csv / watchlist.txt (only if missing - your data is preserved)...
-if not exist "C:\project_list\NA-stock-ai\portfolio.csv" copy /Y "C:\project_list\connect-ai\portfolio.csv.example" "C:\project_list\NA-stock-ai\portfolio.csv"
-if not exist "C:\project_list\NA-stock-ai\watchlist.txt" copy /Y "C:\project_list\connect-ai\watchlist.txt.example" "C:\project_list\NA-stock-ai\watchlist.txt"
+echo Seeding data files (only if missing - your data is preserved)...
+if not exist "C:\project_list\NA-stock-ai\portfolio.csv"   copy /Y "C:\project_list\connect-ai\portfolio.csv.example"   "C:\project_list\NA-stock-ai\portfolio.csv"
+if not exist "C:\project_list\NA-stock-ai\watchlist.txt"   copy /Y "C:\project_list\connect-ai\watchlist.txt.example"   "C:\project_list\NA-stock-ai\watchlist.txt"
+if not exist "C:\project_list\NA-stock-ai\watchlist.json"  copy /Y "C:\project_list\connect-ai\watchlist.json.example"  "C:\project_list\NA-stock-ai\watchlist.json"
 
 echo [3b/4] Compiling extension...
 call npm run compile

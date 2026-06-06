@@ -1,7 +1,7 @@
 # Connect AI — 미국 주식 투자 AI 진행 기록
 
 > 이 파일은 세션 간 컨텍스트 보존용. 새 세션 시작 시 이 파일을 먼저 읽을 것.
-> 마지막 업데이트: 2026-06-06 (v3.1.7 — news.py + watchlist.py 관심종목 DB)
+> 마지막 업데이트: 2026-06-06 (v3.1.8 — 연결 작업 완료)
 
 ---
 
@@ -207,6 +207,15 @@ VS Code 확장(connect-ai-lab.vsix)을 미국 주식 투자 분석 AI로 개조.
   - `경기사이클_섹터로테이션` — 4국면별 주도 섹터
 - 모든 파일이 기존 규격 준수(담당 에이전트 헤더 + stock.py/macro.py 필드 연결 + 날조 금지 원칙).
 - update.bat이 brain 폴더로 자동 배포 → 다음 분석부터 컨텍스트 인식.
+
+**v3.1.8 — 연결 작업 완료**
+- screen.py suggest 모드 → watchlist.add_auto() 상위 5개 자동 등록 (addedBy="auto")
+- extension.ts 라우팅 추가:
+  - "관심종목 열어줘" → connectAiLab.watchlist.open (패널 즉시 오픈)
+  - "포트폴리오 열어줘" / "매수 입력" → connectAiLab.portfolio.open
+  - "IONQ 뉴스 어때" → news.py IONQ (감성 요약 + 주요 뉴스 3~5건)
+- update.bat: macrotrends/dataroma/news/watchlist.py 복사 추가, watchlist.json.example 시딩
+- watchlist.json.example 신규 (시드 파일)
 
 **v3.1.7 — news.py + watchlist.py 관심종목 DB**
 - `news.py` 신규: Yahoo Finance RSS → Google News RSS 폴백. 감성 분류(positive/negative/neutral).
