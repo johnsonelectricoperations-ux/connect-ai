@@ -317,6 +317,22 @@ def validate_single_factor(
                 result[f"spread_{label}"] = np.nan
                 result[f"spread_positive_{label}"] = False
 
+            # 분위 수익률 parquet 저장 (보고서 차트용)
+            q_returns.to_parquet(
+                config.IC_RESULTS_DIR / f"{factor_name}_quintile_{label}.parquet",
+                index=False,
+            )
+
+        # 분위 누적 수익률 저장 (보고서 차트용)
+        q_cumulative = compute_quintile_cumulative_returns(
+            features_df, fwd_returns_df, factor_name, fwd_col,
+        )
+        if not q_cumulative.empty:
+            q_cumulative.to_parquet(
+                config.IC_RESULTS_DIR / f"{factor_name}_cumulative_{label}.parquet",
+                index=False,
+            )
+
         # IC 시계열 저장
         ic_ts.to_parquet(
             config.IC_RESULTS_DIR / f"{factor_name}_ic_{label}.parquet",
