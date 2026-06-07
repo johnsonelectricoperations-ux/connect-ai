@@ -137,7 +137,8 @@ def step_collect_prices(args) -> bool:
             build_universe_snapshots,
         )
         tickers_df = get_nasdaq_nyse_tickers()
-        tickers = tickers_df["symbol"].dropna().tolist()
+        ticker_col = "ticker" if "ticker" in tickers_df.columns else "symbol"
+        tickers = tickers_df[ticker_col].dropna().tolist()
         logger.info("유니버스: %d 종목", len(tickers))
 
         collect_price_data(tickers)
@@ -161,7 +162,8 @@ def step_collect_fundamentals(args) -> bool:
     try:
         from data_collector import get_nasdaq_nyse_tickers, collect_fundamentals
         tickers_df = get_nasdaq_nyse_tickers()
-        tickers = tickers_df["symbol"].dropna().tolist()
+        ticker_col = "ticker" if "ticker" in tickers_df.columns else "symbol"
+        tickers = tickers_df[ticker_col].dropna().tolist()
         collect_fundamentals(tickers)
         logger.info("재무 데이터 수집 완료.")
         return True
@@ -409,9 +411,11 @@ def main():
         logger.info("======= 전체 파이프라인 시작 =======")
 
         if not args.skip_collect:
-            step_collect_prices(args)
+            if not step_collect_prices(args):
+                logger.error("가격 수집 실패 — 파이프라인 중단. 오류를 확인하세요.")
+                sys.exit(1)
             if not args.skip_fundamentals:
-                step_collect_fundamentals(args)
+                step_collect_fundamentals(args)  # 재무 실패는 경고만 (가격 팩터만으로 진행 가능)
 
         if not step_build_features(args):
             logger.error("피처 생성 실패 — 파이프라인 중단.")
