@@ -90,7 +90,7 @@ PRICE_FACTORS = {
     "rs_combined":  (+1, "RS 종합 (SPY·QQQ)",  "Screen Score"),
     "ma_alignment": (+1, "MA 정배열 (20>50>200)", "Market Score"),
     "rsi14":        (-1, "RSI 14 (과매수 = 감점)", "Screen Score"),
-    "week52_pos":   (-1, "52주 위치 (낮을수록 가점)", "Screen/Market"),
+    "week52_pos":   (+1, "52주 위치 (높을수록 가점 — 모멘텀 확인됨)", "Screen/Market"),
 }
 
 FUNDAMENTAL_FACTORS = {
@@ -106,7 +106,7 @@ FUNDAMENTAL_FACTORS = {
 # ──────────────────────────────────────────────
 # v5 🔧 사용자 정의 필요 파라미터 (백테스트 결과 확인 후 확정)
 # ──────────────────────────────────────────────
-IC_THRESHOLD = None  # 🔧 사용자 정의 필요: IC 합격 임계값 (업계 통상 0.03)
+IC_THRESHOLD = 0.02  # 백테스트 결과 확정: 성장주 유니버스 기준 0.02 (업계 통상 0.03보다 낮게 설정)
 
 # 아래는 이번 MVP 범위 밖이지만 참고용으로 기록
 # BAND_HIGH = None          # 🔧 사용자 정의 필요: Conviction '상' 진입 raw 하한

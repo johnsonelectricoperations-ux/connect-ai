@@ -349,37 +349,43 @@ def _judge_factor(result: dict) -> str:
     """
     팩터 합격/불합격 판정.
 
+    spread가 null인 경우(이산형·범주형 팩터 — ma_alignment, rs_combined 등)는
+    5분위 분할이 불가능하므로 spread 조건을 면제하고 IC·t-stat만으로 판정한다.
+
     Returns:
-        "PASS", "WEAK", "FAIL", 또는 "PENDING" (IC_THRESHOLD 미확정)
+        "PASS", "WEAK_PENDING", "STRONG_PENDING", "FAIL", "NO_DATA"
     """
     ic_threshold = config.IC_THRESHOLD
 
     # 12주(주요 기간) IC 기준으로 판정
-    ic_mean = result.get("ic_mean_12W", np.nan)
+    ic_mean        = result.get("ic_mean_12W", np.nan)
     is_significant = result.get("ic_significant_12W", False)
-    sign_match = result.get("sign_match_12W", False)
+    sign_match     = result.get("sign_match_12W", False)
+    spread_val     = result.get("spread_12W")          # None이면 계산 불가
     spread_positive = result.get("spread_positive_12W", False)
 
-    if np.isnan(ic_mean):
+    # spread가 null인 팩터(이산형)는 spread 조건 면제
+    spread_ok = spread_positive if (spread_val is not None) else True
+
+    if isinstance(ic_mean, float) and np.isnan(ic_mean):
         return "NO_DATA"
 
     if not sign_match:
         return "FAIL"  # 부호 불일치 → 무조건 불합격
 
     if ic_threshold is None:
-        # 🔧 사용자 정의 필요: IC_THRESHOLD 미확정
-        # 잠정 판정 (절대값 기준)
-        if abs(ic_mean) >= 0.05 and is_significant and spread_positive:
-            return "STRONG_PENDING"  # 강한 후보 (임계값 확정 대기)
-        elif abs(ic_mean) >= 0.02 and spread_positive:
-            return "WEAK_PENDING"  # 약한 후보
+        # IC_THRESHOLD 미확정 — 잠정 판정
+        if abs(ic_mean) >= 0.05 and is_significant and spread_ok:
+            return "STRONG_PENDING"
+        elif abs(ic_mean) >= 0.02 and spread_ok:
+            return "WEAK_PENDING"
         else:
             return "FAIL"
     else:
-        if abs(ic_mean) >= ic_threshold and is_significant and sign_match and spread_positive:
+        if abs(ic_mean) >= ic_threshold and is_significant and spread_ok:
             return "PASS"
-        elif abs(ic_mean) >= ic_threshold * 0.7 and sign_match and spread_positive:
-            return "WEAK"
+        elif abs(ic_mean) >= ic_threshold * 0.7 and spread_ok:
+            return "WEAK_PENDING"
         else:
             return "FAIL"
 
