@@ -64,14 +64,31 @@ def get_nasdaq_nyse_tickers() -> pd.DataFrame:
 
 
 def _get_tickers_from_fmp() -> pd.DataFrame:
-    """FMP stock-list API로 NASDAQ/NYSE 종목을 수집한다."""
+    """FMP stock-list API로 NASDAQ/NYSE 종목을 수집한다.
+    402(유료 전용) 응답 시 내장 유니버스로 자동 폴백.
+    """
     url = f"{config.FMP_BASE_URL}/stock-list"
     params = {"apikey": config.FMP_API_KEY}
 
     logger.info("FMP에서 종목 리스트 수집 중...")
-    resp = requests.get(url, params=params, timeout=30)
-    resp.raise_for_status()
+    try:
+        resp = requests.get(url, params=params, timeout=30)
+        if resp.status_code == 402:
+            logger.warning(
+                "FMP stock-list는 유료 플랜 전용입니다 (402). "
+                "내장 성장주 유니버스로 폴백합니다. "
+                "(재무 데이터 수집에는 API 키가 계속 사용됩니다)"
+            )
+            return _get_builtin_growth_universe()
+        resp.raise_for_status()
+    except requests.exceptions.HTTPError as e:
+        logger.warning("FMP 종목 리스트 수집 실패(%s) → 내장 유니버스 사용", e)
+        return _get_builtin_growth_universe()
+
     data = resp.json()
+    if not data:
+        logger.warning("FMP 종목 리스트 빈 응답 → 내장 유니버스 사용")
+        return _get_builtin_growth_universe()
 
     df = pd.DataFrame(data)
     # NASDAQ/NYSE 필터 + 보통주만
