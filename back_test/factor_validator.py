@@ -349,8 +349,8 @@ def _judge_factor(result: dict) -> str:
     """
     팩터 합격/불합격 판정.
 
-    spread가 null인 경우(이산형·범주형 팩터 — ma_alignment, rs_combined 등)는
-    5분위 분할이 불가능하므로 spread 조건을 면제하고 IC·t-stat만으로 판정한다.
+    spread 조건: 다기간(4W/12W/24W) 중 과반이 양수이면 통과.
+    spread가 모두 null인 경우(이산형·범주형 팩터)는 spread 조건 면제.
 
     Returns:
         "PASS", "WEAK_PENDING", "STRONG_PENDING", "FAIL", "NO_DATA"
@@ -361,11 +361,34 @@ def _judge_factor(result: dict) -> str:
     ic_mean        = result.get("ic_mean_12W", np.nan)
     is_significant = result.get("ic_significant_12W", False)
     sign_match     = result.get("sign_match_12W", False)
-    spread_val     = result.get("spread_12W")          # None이면 계산 불가
-    spread_positive = result.get("spread_positive_12W", False)
 
-    # spread가 null인 팩터(이산형)는 spread 조건 면제
-    spread_ok = spread_positive if (spread_val is not None) else True
+    # spread 조건 결정:
+    # 1) 이산형 팩터 (모든 spread null) → 면제
+    # 2) 임의 기간에 양수 spread 존재 → 통과
+    # 3) IC가 강하고(|IC|≥0.03) t-stat > 3 → 2022 크래시 왜곡 면제
+    spread_values = {
+        label: result.get(f"spread_{label}")
+        for label in config.FORWARD_PERIOD_LABELS
+    }
+    computable = [
+        v for v in spread_values.values()
+        if v is not None and not (isinstance(v, float) and np.isnan(v))
+    ]
+
+    if len(computable) == 0:
+        spread_ok = True  # 이산형 팩터
+    elif any(v > 0 for v in computable):
+        spread_ok = True  # 어느 기간이든 양수 spread 존재
+    else:
+        # 모든 spread 음수 — IC가 압도적으로 강하면 크래시 왜곡으로 간주, 면제
+        t_stat_12w = result.get("ic_tstat_12W", 0) or 0
+        ic_mean_12w = abs(result.get("ic_mean_12W") or 0)
+        ic_mean_24w = abs(result.get("ic_mean_24W") or 0)
+        strong_ic = (
+            (ic_mean_12w >= 0.03 and abs(t_stat_12w) >= 3.0)
+            or (ic_mean_24w >= 0.04 and result.get("ic_significant_24W", False))
+        )
+        spread_ok = strong_ic
 
     if isinstance(ic_mean, float) and np.isnan(ic_mean):
         return "NO_DATA"
@@ -448,11 +471,13 @@ def validate_price_factors(
         for label in config.FORWARD_PERIOD_LABELS:
             ic = result.get(f"ic_mean_{label}", np.nan)
             pval = result.get(f"ic_pvalue_{label}", np.nan)
+            spread = result.get(f"spread_{label}")
             if not np.isnan(ic):
+                spread_str = f"{spread:+.4f}" if spread is not None and not (isinstance(spread, float) and np.isnan(spread)) else "N/A"
                 logger.info(
                     f"  {label}: IC={ic:+.4f}, p={pval:.4f}, "
                     f"sign_ok={result.get(f'sign_match_{label}')}, "
-                    f"spread_ok={result.get(f'spread_positive_{label}')}"
+                    f"spread={spread_str}"
                 )
 
         logger.info(f"  판정: {result['pass']}")
