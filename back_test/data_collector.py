@@ -500,10 +500,15 @@ def collect_spy_qqq_data(
 # FMP — 재무 데이터 수집
 # ══════════════════════════════════════════════
 
+class FMPDailyLimitExceeded(Exception):
+    """FMP 일일 API 한도 초과 시 발생."""
+    pass
+
+
 def _fmp_request(endpoint: str, params: dict = None) -> list | dict | None:
-    """FMP API 요청 헬퍼. 레이트 리밋 대응."""
+    """FMP API 요청 헬퍼. 레이트 리밋 및 일일 한도 초과 감지."""
     if not config.FMP_API_KEY:
-        logger.error("FMP API 키가 설정되지 않음. config.py 또는 환경변수 FMP_API_KEY 확인")
+        logger.error("FMP API 키가 설정되지 않음.")
         return None
 
     url = f"{config.FMP_BASE_URL}/{endpoint}"
@@ -511,14 +516,31 @@ def _fmp_request(endpoint: str, params: dict = None) -> list | dict | None:
     if params:
         p.update(params)
 
-    time.sleep(config.FMP_RATE_LIMIT_DELAY)  # 레이트 리밋 대응
+    time.sleep(config.FMP_RATE_LIMIT_DELAY)
 
     try:
         resp = requests.get(url, params=p, timeout=30)
+
+        # 일일 한도 초과 — 즉시 중단
+        if resp.status_code == 429:
+            raise FMPDailyLimitExceeded(
+                "FMP 일일 API 한도 초과 (429). "
+                "오늘 수집은 여기서 중단합니다. "
+                "내일 다시 실행하면 이어서 수집됩니다."
+            )
+
+        # 결제 필요 (유료 엔드포인트)
+        if resp.status_code == 402:
+            logger.warning("FMP 402: 유료 플랜 전용 엔드포인트 — %s", endpoint)
+            return None
+
         resp.raise_for_status()
         return resp.json()
+
+    except FMPDailyLimitExceeded:
+        raise  # 상위로 전파
     except requests.RequestException as e:
-        logger.warning(f"FMP 요청 실패: {endpoint} — {e}")
+        logger.warning("FMP 요청 실패: %s — %s", endpoint, e)
         return None
 
 
@@ -568,6 +590,7 @@ def collect_fundamentals(
 
     logger.info(f"재무 데이터 수집 시작: {len(tickers)}종목 (API 콜 ~{len(tickers)*3})")
 
+    collected = 0
     for ticker in tqdm(tickers, desc="재무 수집"):
         try:
             fund_df = _collect_single_fundamental(ticker)
@@ -575,15 +598,32 @@ def collect_fundamentals(
                 path = config.FUNDAMENTALS_DIR / f"{ticker}.parquet"
                 fund_df.to_parquet(path, index=False, engine="pyarrow")
                 results[ticker] = fund_df
+                collected += 1
 
                 if ticker not in progress["fundamentals_done"]:
                     progress["fundamentals_done"].append(ticker)
                 _save_progress(progress)
 
-        except Exception as e:
-            logger.warning(f"{ticker}: 재무 수집 오류 — {e}")
+        except FMPDailyLimitExceeded as e:
+            # 일일 한도 초과 — 진행 상황 저장 후 즉시 중단
+            _save_progress(progress)
+            remaining_count = len(tickers) - collected
+            logger.warning(
+                "\n" + "="*60 + "\n"
+                "FMP 일일 API 한도(250콜) 초과\n"
+                "오늘 수집: %d종목 완료\n"
+                "남은 종목: %d종목 (내일 재실행 시 자동으로 이어서 수집)\n"
+                "재실행 명령: py main.py --collect-fundamentals\n"
+                + "="*60,
+                collected, remaining_count,
+            )
+            break
 
-    logger.info(f"재무 수집 완료: {len(results)}종목 성공")
+        except Exception as e:
+            logger.warning("%s: 재무 수집 오류 — %s", ticker, e)
+
+    logger.info("재무 수집 완료: %d종목 성공 (누적 완료: %d종목)",
+                collected, len(progress["fundamentals_done"]))
     return results
 
 
