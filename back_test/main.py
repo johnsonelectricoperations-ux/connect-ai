@@ -136,10 +136,25 @@ def step_collect_prices(args) -> bool:
             collect_spy_qqq_data,
             build_universe_snapshots,
         )
+        from config import SECTOR_MAP_PATH, UNIVERSE_DIR
+        UNIVERSE_DIR.mkdir(parents=True, exist_ok=True)
+
         tickers_df = get_nasdaq_nyse_tickers()
         ticker_col = "ticker" if "ticker" in tickers_df.columns else "symbol"
         tickers = tickers_df[ticker_col].dropna().tolist()
         logger.info("유니버스: %d 종목", len(tickers))
+
+        # 섹터 매핑 저장 (팩터 검증 필터용)
+        if "sector" in tickers_df.columns:
+            tickers_df[[ticker_col, "sector"]].rename(
+                columns={ticker_col: "ticker"}
+            ).to_parquet(SECTOR_MAP_PATH, index=False)
+            from config import GROWTH_SECTORS
+            growth_count = tickers_df["sector"].isin(GROWTH_SECTORS).sum()
+            logger.info(
+                "섹터 매핑 저장: %d종목 (성장 섹터 %d종목)",
+                len(tickers_df), growth_count,
+            )
 
         collect_price_data(tickers)
         collect_spy_qqq_data()

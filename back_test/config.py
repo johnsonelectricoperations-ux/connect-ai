@@ -23,6 +23,7 @@ IC_RESULTS_DIR = RESULTS_DIR / "ic_results"
 QUINTILE_DIR = RESULTS_DIR / "quintile_returns"
 REPORTS_DIR = RESULTS_DIR / "reports"
 DB_PATH = PROJECT_ROOT / "connect_ai.duckdb"
+SECTOR_MAP_PATH = UNIVERSE_DIR / "ticker_sectors.parquet"
 
 # 디렉토리 자동 생성
 for d in [
@@ -74,6 +75,18 @@ RS_PERIODS_DAYS = {
 # 벤치마크
 # ──────────────────────────────────────────────
 BENCHMARKS = ["SPY", "QQQ"]
+
+# ──────────────────────────────────────────────
+# 팩터 검증 대상 섹터 (성장주 필터)
+# v5 시스템은 성장 섹터 대상이므로 전체 시장이 아닌 이 섹터로 검증
+# ──────────────────────────────────────────────
+GROWTH_SECTORS = [
+    "Technology",
+    "Healthcare",
+    "Consumer Discretionary",
+    "Communication Services",
+    "Industrials",
+]
 
 # ──────────────────────────────────────────────
 # 팩터 정의 (이름, 의도 부호, v5 대응 영역)

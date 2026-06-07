@@ -394,12 +394,31 @@ def _judge_factor(result: dict) -> str:
 # 전체 팩터 검증 실행
 # ══════════════════════════════════════════════
 
+def _apply_growth_sector_filter(features_df: pd.DataFrame, label: str) -> pd.DataFrame:
+    """성장 섹터 필터 적용. sector 컬럼이 없으면 원본 반환."""
+    if "sector" not in features_df.columns or not config.GROWTH_SECTORS:
+        return features_df
+    before = len(features_df["ticker"].unique())
+    filtered = features_df[features_df["sector"].isin(config.GROWTH_SECTORS)].copy()
+    after = len(filtered["ticker"].unique())
+    logger.info(
+        "%s 성장 섹터 필터 적용: %d → %d 종목 (%s)",
+        label, before, after,
+        ", ".join(config.GROWTH_SECTORS),
+    )
+    if filtered.empty:
+        logger.warning("성장 섹터 필터 후 데이터 없음 — 원본 사용")
+        return features_df
+    return filtered
+
+
 def validate_price_factors(
     features_df: pd.DataFrame,
     fwd_returns_df: pd.DataFrame,
 ) -> pd.DataFrame:
     """
     v5 설계의 모든 가격 팩터를 검증한다.
+    성장 섹터(Technology, Healthcare 등) 종목만 대상으로 검증.
 
     Returns:
         검증 결과 요약 테이블
@@ -407,6 +426,7 @@ def validate_price_factors(
     logger.info("=" * 60)
     logger.info("가격 팩터 IC 검증 시작")
     logger.info("=" * 60)
+    features_df = _apply_growth_sector_filter(features_df, "가격 팩터")
 
     results = []
 
@@ -454,10 +474,11 @@ def validate_fundamental_factors(
     features_df: pd.DataFrame,
     fwd_returns_df: pd.DataFrame,
 ) -> pd.DataFrame:
-    """v5 설계의 모든 재무 팩터를 검증한다."""
+    """v5 설계의 모든 재무 팩터를 검증한다. 성장 섹터 종목만 대상."""
     logger.info("=" * 60)
     logger.info("재무 팩터 IC 검증 시작")
     logger.info("=" * 60)
+    features_df = _apply_growth_sector_filter(features_df, "재무 팩터")
 
     results = []
 

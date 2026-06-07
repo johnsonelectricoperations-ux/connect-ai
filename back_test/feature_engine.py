@@ -273,7 +273,17 @@ def build_all_features(
     if features.empty:
         return features
 
-    # 2. 재무 피처 병합
+    # 2. 섹터 정보 병합 (팩터 검증 필터용)
+    if config.SECTOR_MAP_PATH.exists():
+        try:
+            sector_df = pd.read_parquet(config.SECTOR_MAP_PATH)[["ticker", "sector"]]
+            features = features.merge(sector_df, on="ticker", how="left")
+            coverage = features["sector"].notna().mean() * 100
+            logger.info("섹터 정보 병합: %.1f%% 커버리지", coverage)
+        except Exception as e:
+            logger.warning("섹터 정보 병합 실패(무시): %s", e)
+
+    # 3. 재무 피처 병합
     if fundamentals_df is not None and not fundamentals_df.empty:
         features = merge_fundamental_features(features, fundamentals_df)
     else:
@@ -286,9 +296,9 @@ def build_all_features(
             if col not in features.columns:
                 features[col] = np.nan
 
-    # 3. 컬럼 순서 정리
+    # 4. 컬럼 순서 정리
     ordered_cols = [
-        "date", "ticker", "close", "volume", "avg_volume_20d",
+        "date", "ticker", "sector", "close", "volume", "avg_volume_20d",
         # 가격 팩터
         "rs_spy_1m", "rs_spy_3m", "rs_spy_6m",
         "rs_qqq_1m", "rs_qqq_3m", "rs_qqq_6m",
