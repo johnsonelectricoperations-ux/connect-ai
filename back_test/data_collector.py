@@ -48,47 +48,126 @@ def _save_progress(progress: dict):
 
 def get_nasdaq_nyse_tickers() -> pd.DataFrame:
     """
-    NASDAQ/NYSE 종목 리스트를 수집한다.
-    FMP API 키가 있으면 FMP stock-list 사용, 없으면 내장 리스트 반환.
+    NASDAQ/NYSE 전체 종목 리스트를 수집한다.
+
+    우선순위:
+      1. nasdaq.com 스크리너 API (무료, ~6,000종목 — 기본)
+      2. FMP stock-list (유료 전용, 402면 건너뜀)
+      3. 내장 성장주 유니버스 (최후 폴백, 135종목)
 
     Returns:
-        DataFrame with columns: [ticker, name, exchange, sector, market_cap]
+        DataFrame[ticker, name, exchange, sector, market_cap]
+        시총 $300M 이상 미국 보통주만 포함
     """
-    # FMP API가 있으면 FMP 사용
-    if config.FMP_API_KEY:
-        return _get_tickers_from_fmp()
+    # 1순위: nasdaq.com (무료, 전체 시장)
+    df = _get_tickers_from_nasdaq()
+    if not df.empty:
+        return df
 
-    # FMP 없으면 내장 성장주 유니버스 사용 (약 200종목)
-    logger.warning("FMP API 키 없음 → 내장 성장주 유니버스 사용 (약 200종목)")
+    # 2순위: FMP (유료 플랜 보유 시)
+    if config.FMP_API_KEY:
+        df = _get_tickers_from_fmp()
+        if not df.empty:
+            return df
+
+    # 최후 폴백: 내장 유니버스
+    logger.warning("모든 종목 리스트 수집 실패 → 내장 성장주 유니버스(135종목) 사용")
     return _get_builtin_growth_universe()
+
+
+def _get_tickers_from_nasdaq() -> pd.DataFrame:
+    """
+    nasdaq.com 스크리너 API로 NASDAQ/NYSE 전체 종목을 수집한다.
+    무료, 인증 불필요. 시총 $300M 이상 미국 보통주 필터 적용.
+    """
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "Accept": "application/json, text/plain, */*",
+    }
+
+    all_rows = []
+    for exchange in ["NASDAQ", "NYSE"]:
+        url = (
+            "https://api.nasdaq.com/api/screener/stocks"
+            f"?tableonly=true&exchange={exchange}&download=true"
+        )
+        try:
+            resp = requests.get(url, headers=headers, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+            rows = data.get("data", {}).get("rows", [])
+            if rows:
+                all_rows.extend(rows)
+                logger.info("%s: %d종목 수집", exchange, len(rows))
+        except Exception as e:
+            logger.warning("nasdaq.com %s 수집 실패: %s", exchange, e)
+
+    if not all_rows:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(all_rows)
+
+    # 컬럼 정규화
+    df = df.rename(columns={
+        "symbol":    "ticker",
+        "name":      "name",
+        "sector":    "sector",
+        "marketCap": "market_cap_str",
+    })
+
+    # 시총 숫자 변환
+    def _parse_market_cap(val) -> float:
+        try:
+            return float(str(val).replace(",", "").replace("$", ""))
+        except Exception:
+            return 0.0
+
+    df["market_cap"] = df["market_cap_str"].apply(_parse_market_cap)
+
+    # 필터: 시총 $300M 이상, 미국 주식, 티커에 특수문자 없는 보통주
+    df = df[
+        (df["market_cap"] >= config.MIN_MARKET_CAP) &
+        (df["ticker"].str.match(r"^[A-Z]{1,5}$", na=False))
+    ].copy()
+
+    # 필요 컬럼 정리
+    keep = ["ticker", "name", "sector", "market_cap"]
+    for col in keep:
+        if col not in df.columns:
+            df[col] = ""
+    df = df[keep].drop_duplicates("ticker").reset_index(drop=True)
+
+    logger.info(
+        "nasdaq.com 유니버스 완성: %d종목 (시총 $300M+ 보통주)", len(df)
+    )
+    return df
 
 
 def _get_tickers_from_fmp() -> pd.DataFrame:
     """FMP stock-list API로 NASDAQ/NYSE 종목을 수집한다.
-    402(유료 전용) 응답 시 내장 유니버스로 자동 폴백.
+    402(유료 전용) 응답 시 빈 DataFrame 반환.
     """
     url = f"{config.FMP_BASE_URL}/stock-list"
     params = {"apikey": config.FMP_API_KEY}
 
-    logger.info("FMP에서 종목 리스트 수집 중...")
+    logger.info("FMP에서 종목 리스트 수집 시도...")
     try:
         resp = requests.get(url, params=params, timeout=30)
         if resp.status_code == 402:
-            logger.warning(
-                "FMP stock-list는 유료 플랜 전용입니다 (402). "
-                "내장 성장주 유니버스로 폴백합니다. "
-                "(재무 데이터 수집에는 API 키가 계속 사용됩니다)"
-            )
-            return _get_builtin_growth_universe()
+            logger.info("FMP stock-list 유료 전용(402) — 건너뜀")
+            return pd.DataFrame()
         resp.raise_for_status()
     except requests.exceptions.HTTPError as e:
-        logger.warning("FMP 종목 리스트 수집 실패(%s) → 내장 유니버스 사용", e)
-        return _get_builtin_growth_universe()
+        logger.warning("FMP 종목 리스트 실패(%s)", e)
+        return pd.DataFrame()
 
     data = resp.json()
     if not data:
-        logger.warning("FMP 종목 리스트 빈 응답 → 내장 유니버스 사용")
-        return _get_builtin_growth_universe()
+        return pd.DataFrame()
 
     df = pd.DataFrame(data)
     # NASDAQ/NYSE 필터 + 보통주만
