@@ -19,7 +19,8 @@ copy /Y C:\project_list\connect-ai\watchlist.py    C:\project_list\NA-stock-ai\w
 copy /Y C:\project_list\connect-ai\regime.py      C:\project_list\NA-stock-ai\regime.py
 copy /Y C:\project_list\connect-ai\buy_score.py   C:\project_list\NA-stock-ai\buy_score.py
 copy /Y C:\project_list\connect-ai\exit_score.py  C:\project_list\NA-stock-ai\exit_score.py
-copy /Y C:\project_list\connect-ai\monitor.py     C:\project_list\NA-stock-ai\monitor.py
+copy /Y C:\project_list\connect-ai\monitor.py        C:\project_list\NA-stock-ai\monitor.py
+copy /Y C:\project_list\connect-ai\deep_analysis.py C:\project_list\NA-stock-ai\deep_analysis.py
 
 echo [3/4] Deploying agent skills to brain company folder...
 xcopy /E /I /Y "C:\project_list\connect-ai\agent-skills" "C:\project_list\ai_agent_antigravity\_company\_agents"
