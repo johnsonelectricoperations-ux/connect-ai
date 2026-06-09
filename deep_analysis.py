@@ -49,19 +49,25 @@ def _sanitize(obj):
 
 
 # ─────────────────────────────────────────────────────────────
-# Ollama 설정 로드
+# LM Studio 설정 로드
 # ─────────────────────────────────────────────────────────────
+# LM Studio: http://127.0.0.1:12345 (OpenAI 호환 API)
+# 모델명은 system_schema.json → default_model 에서 읽음.
+# 집에서 모델 변경 시 system_schema.json 의 default_model 만 수정하면 됨.
 
 def _load_llm_config():
-    """system_schema.json 에서 ollama_url, default_model 읽기."""
-    defaults = {"url": "http://127.0.0.1:11434", "model": "gemma4:e2b"}
+    """system_schema.json 에서 lm_studio_url, default_model 읽기.
+    키 우선순위: lm_studio_url > ollama_url (하위 호환) → 기본값 포트 12345."""
+    defaults = {"url": "http://127.0.0.1:12345", "model": "TODO"}
     if not _SCHEMA_PATH.exists():
         return defaults
     try:
         with open(_SCHEMA_PATH, encoding="utf-8") as f:
             schema = json.load(f)
         eng = schema.get("configuration", {}).get("engine_options", {})
-        url   = eng.get("ollama_url") or defaults["url"]
+        url = (eng.get("lm_studio_url")
+               or eng.get("ollama_url")
+               or defaults["url"])
         model = eng.get("default_model") or defaults["model"]
         return {"url": url.rstrip("/"), "model": model}
     except Exception:
@@ -267,30 +273,34 @@ def call_ollama(prompt, config):
     except ImportError:
         return None, "urllib 없음"
 
+    # LM Studio OpenAI 호환 API: POST /v1/chat/completions
     payload = json.dumps({
-        "model":  config["model"],
-        "prompt": prompt,
+        "model": config["model"],
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.3,   # 낮은 temperature: 일관된 JSON 출력
+        "top_p": 0.9,
         "stream": False,
-        "options": {
-            "temperature": 0.3,   # 낮은 temperature: 더 일관된 JSON 출력
-            "top_p": 0.9,
-        },
     }).encode("utf-8")
 
     try:
         req = _ur.Request(
-            f"{config['url']}/api/generate",
+            f"{config['url']}/v1/chat/completions",
             data=payload,
             headers={"Content-Type": "application/json"},
         )
         with _ur.urlopen(req, timeout=300) as resp:
-            raw = resp.read().decode("utf-8")
+            raw    = resp.read().decode("utf-8")
             result = json.loads(raw)
-            return result.get("response", "").strip(), None
+            content = (result.get("choices", [{}])[0]
+                       .get("message", {})
+                       .get("content", "")
+                       .strip())
+            return content, None
     except _ue.URLError as e:
-        return None, f"Ollama 연결 실패: {e} — Ollama가 실행 중인지 확인 (ollama serve)"
+        return None, (f"LM Studio 연결 실패: {e} "
+                      f"— LM Studio가 실행 중이고 '{config['url']}' 에서 서버가 켜져 있는지 확인")
     except Exception as e:
-        return None, f"Ollama 오류: {e}"
+        return None, f"LM Studio 오류: {e}"
 
 
 # ─────────────────────────────────────────────────────────────
