@@ -43,3 +43,10 @@ preview.html
 # Nested duplicate copies (user dragged folders into multiple paths)
 assets/pixel/characters/Modern_Office_Revamped_v1/**
 assets/pixel/characters/moderninteriors-win/**
+# back_test/ — IC 검증 파이프라인 (로컬 전용, VSIX 불필요)
+back_test/**
+# 테스트 파일 제외
+test_*.py
+# __pycache__ 제외
+**/__pycache__/**
+*.pyc
