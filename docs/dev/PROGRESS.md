@@ -1,7 +1,7 @@
 # Connect AI — 미국 주식 투자 AI 진행 기록
 
 > 이 파일은 세션 간 컨텍스트 보존용. 새 세션 시작 시 이 파일을 먼저 읽을 것.
-> 마지막 업데이트: 2026-06-06 (v3.1.8 — 연결 작업 완료)
+> 마지막 업데이트: 2026-06-09 (v5 전체 시스템 완성 — 9단계 파이프라인 완성)
 
 ---
 
@@ -207,6 +207,119 @@ VS Code 확장(connect-ai-lab.vsix)을 미국 주식 투자 분석 AI로 개조.
   - `경기사이클_섹터로테이션` — 4국면별 주도 섹터
 - 모든 파일이 기존 규격 준수(담당 에이전트 헤더 + stock.py/macro.py 필드 연결 + 날조 금지 원칙).
 - update.bat이 brain 폴더로 자동 배포 → 다음 분석부터 컨텍스트 인식.
+
+**v5.0.0 — 전체 투자 시스템 완성 (2026-06-09)** ⭐
+
+### 배경
+- v3.x는 AI 에이전트 라우팅 + 도구 7종(stock/macro/backtest/sec/portfolio/screen)이었음
+- v5는 정량 파이프라인으로 완전히 업그레이드: 9단계 깔때기(§0~§9) 구현 완료
+- 설계 문서: `docs/investment/INVESTMENT_SYSTEM_v5.md`, `SCORING.md`, `설계방향_데이터신뢰성_3단깔때기.md`, `backtest방법.md`
+
+### v5 시스템 9단계 파이프라인
+
+| 단계 | 도구 | 설명 | 상태 |
+|------|------|------|------|
+| §0 백테스트 검증 | `back_test/` | IC(정보계수) 2018~2025 검증 → 유효 팩터 확정 | ✅ 완료 (별도 폴더) |
+| §1 스크린 | `screen.py` | tenbagger 테마 랭킹, §0 결과 반영 | ✅ v2.0.0 |
+| §2 딥 분석 | `deep_analysis.py` | LM Studio LLM → Conviction Band 계산 | ✅ **신규** |
+| §3 펀더멘털 점수 | `buy_score.py` | 100점 → 6개 항목 | ✅ **신규** |
+| §4 Market 점수 | `buy_score.py` | 100점 → 5개 항목 | ✅ **신규** |
+| §5 동적 가중치 | `buy_score.py` | 시총 $5B 기준 F:M=0.8:0.2/0.6:0.4 | ✅ **신규** |
+| §5.5 레짐 게이트 | `regime.py` | SPY/QQQ MA200 → RISK_ON/CAUTION/RISK_OFF | ✅ **신규** |
+| §6 Buy Score → 결정 | `buy_score.py` | 점수 + Conviction + Regime → 매수/관망/차단 | ✅ **신규** |
+| §7 포지션 사이징 | `buy_score.py` | 최대 비중 계산, 테마/섹터 캡 | ✅ **신규** |
+| §8 Exit Score | `exit_score.py` | [A] 가격손절 [B] 펀더멘털 [C] 밸류에이션 | ✅ **신규** |
+| §9 운영 스케줄러 | `monitor.py` | 매일/주2회/주1회 자동 실행 + 텔레그램 | ✅ **신규** |
+
+### 신규 파일 5종
+
+**`regime.py`** — 시장 레짐 게이트 (§5.5)
+- SPY/QQQ vs MA200 비교 → RISK_ON / CAUTION / RISK_OFF
+- CAUTION_MULT=0.5 (사이즈 50% 축소), CAUTION_SCORE_REQ=5 (Buy Score +5점 요구)
+- `py regime.py`
+
+**`buy_score.py`** — 매수 결정 파이프라인 (§3~§7)
+- `compute_fundamental_score()`: 매출성장(25) + 매출총이익률(20) + FCF(15) + 현금런웨이(15) + 기관변화(13) + Dataroma(12)
+- `compute_market_score()`: RS 6M(20) + MA정렬(20) + 52주위치(20) + Forward P/S(20) + 실적 D-Day(20)
+- `compute_buy_score()`: 동적 가중치 적용
+- Conviction Band 자동 로드 (watchlist.json), `--conviction 상|중|하` 오버라이드 가능
+- `--log` 플래그: backtest_log.json에 진입 스냅샷 저장 (Exit Score 델타 비교용)
+- 핵심 상수: BAND_HIGH=38, BAND_MID=28, THEME_CAP=0.25, SECTOR_CAP=0.35
+- `py buy_score.py TICKER [--no-regime] [--conviction 상] [--log]`
+
+**`exit_score.py`** — 청산 판단 (§8)
+- [A] 가격손절: Hard -20% (HARD_STOP_PCT=0.80), MA50+ATR×2, 트레일링 -25% (TRAILING_STOP_PCT=0.75)
+- [B] 펀더멘털 악화: backtest_log.json 스냅샷 대비 델타 감지, 누적 페널티 점수
+- [C] 밸류에이션 과열: P/S>40 (-3), RS 1M +50% (경고)
+- Verdict: HIGH(즉시 매도) / MEDIUM(검토) / LOW(보유)
+- `portfolio_state.json` 사이드카: 트레일링 최고가 자동 추적
+- `py exit_score.py` (전체) 또는 `py exit_score.py IONQ --entry 45.0`
+
+**`deep_analysis.py`** — LLM 심층분석 + Conviction Band (§2)
+- 데이터 수집: yfinance + news.py + macrotrends.py + dataroma.py
+- LM Studio API (OpenAI 호환): `http://127.0.0.1:12345/v1/chat/completions`
+  - 요청: `{"model":..., "messages":[{"role":"user","content":prompt}], "stream":false}`
+  - 응답: `result["choices"][0]["message"]["content"]`
+- 프롬프트 설계: **bear_case/key_risks 먼저** → 확증편향 방지 (§2 원칙)
+- temperature=0.3 (일관성), JSON 파싱 fallback (trailing comma 자동 제거)
+- Conviction Band 계산: raw = BQ + CA + (10-ER) + (10-DR) + TAM (0~50)
+  - raw≥38 → 상, 28~37 → 중, <28 → 하(매수 차단)
+- 결과를 watchlist.json에 자동 저장, `--no-save` / `--force` 옵션
+- system_schema.json에서 설정 로드: `lm_studio_url` 키 우선, `ollama_url` 하위호환
+- `py deep_analysis.py TICKER [--no-save] [--force]`
+
+**`monitor.py`** — 운영 스케줄러 + 텔레그램 (§9)
+- `task_daily()`: 레짐 게이트 + 가격손절 체크 (장 마감 후 UTC 21:05)
+- `task_biweekly()`: Screen Score 실행, 상위 5종목 알림 (월/목 UTC 21:15)
+- `task_weekly()`: Exit [B][C] 펀더멘털 악화 체크 (월 UTC 21:30)
+- `--daemon` 모드: `pip install schedule` 후 상시 실행
+- 텔레그램: 환경변수 `TELEGRAM_TOKEN` + `TELEGRAM_CHAT_ID` 설정 시 활성화
+- `py monitor.py --daily|--biweekly|--weekly|--daemon|--status`
+
+### 확정된 시스템 파라미터
+
+| 파라미터 | 값 | 파일 |
+|---------|-----|------|
+| Conviction Band 상 | raw ≥ 38 | deep_analysis.py, buy_score.py |
+| Conviction Band 중 | 28 ≤ raw < 38 | deep_analysis.py, buy_score.py |
+| Conviction Band 하 | raw < 28 (매수 차단) | buy_score.py |
+| CAUTION 사이즈 축소 | 50% (CAUTION_MULT=0.5) | regime.py, buy_score.py |
+| CAUTION Buy Score 요구 | +5점 (CAUTION_SCORE_REQ=5) | regime.py, buy_score.py |
+| Hard Stop | -20% (HARD_STOP_PCT=0.80) | exit_score.py |
+| MA50+ATR 배수 | 2.0× (MA50_VOL_MULT=2.0) | exit_score.py |
+| Trailing Stop | -25% (TRAILING_STOP_PCT=0.75) | exit_score.py |
+| 테마 집중 한도 | 25% (THEME_CAP=0.25) | buy_score.py |
+| 섹터 집중 한도 | 35% (SECTOR_CAP=0.35) | buy_score.py |
+
+### §0 백테스트 검증 결과 (팩터 유효성)
+
+IC_THRESHOLD=0.02 기준 (2018~2025):
+
+| 팩터 | IC 결과 | 채택 |
+|------|---------|------|
+| RS 6M | PASS | ✅ Market Score 편입 |
+| MA 정렬 | PASS | ✅ Market Score 편입 |
+| 52주 위치 | PASS | ✅ Market Score 편입 |
+| RSI | FAIL | ❌ 제외 |
+| RS 1M | FAIL | ❌ 제외 |
+| RS 3M | FAIL | ❌ 제외 |
+
+### LM Studio 설정 (집에서 확인 필요)
+
+- 포트: **12345** (`http://127.0.0.1:12345`)
+- API 방식: OpenAI 호환 (`/v1/chat/completions`)
+- 현재 system_schema.json: `ollama_url: "http://127.0.0.1:11434"`, `model: "gemma4:e2b"` → 집에서 수정 필요
+- **집에서 할 일**:
+  1. `system_schema.json` → `engine_options`에 `"lm_studio_url": "http://127.0.0.1:12345"` 추가
+  2. `"default_model"` → 실제 LM Studio 모델명으로 교체 (예: `"Qwen2.5-7B-Instruct"`)
+  3. `update.bat` 실행 → NA-stock-ai에 5개 신규 파일 동기화
+  4. `py deep_analysis.py IONQ` 테스트 (LM Studio 실행 상태에서)
+
+### update.bat 수정사항
+- 브랜치 변경: `charming-hopper-M7yZf` → `claude/hopeful-ritchie-webtip`
+- 복사 목록 추가: `regime.py`, `buy_score.py`, `exit_score.py`, `monitor.py`, `deep_analysis.py`
+
+---
 
 **v3.1.8 — 연결 작업 완료**
 - screen.py suggest 모드 → watchlist.add_auto() 상위 5개 자동 등록 (addedBy="auto")
