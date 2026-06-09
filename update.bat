@@ -2,7 +2,7 @@
 cd /d C:\project_list\connect-ai
 
 echo [1/4] Pulling latest code...
-git pull origin claude/charming-hopper-M7yZf
+git pull origin claude/hopeful-ritchie-webtip
 if errorlevel 1 goto :error
 
 echo [2/4] Copying tools to workspace...
@@ -16,6 +16,10 @@ copy /Y C:\project_list\connect-ai\macrotrends.py  C:\project_list\NA-stock-ai\m
 copy /Y C:\project_list\connect-ai\dataroma.py     C:\project_list\NA-stock-ai\dataroma.py
 copy /Y C:\project_list\connect-ai\news.py         C:\project_list\NA-stock-ai\news.py
 copy /Y C:\project_list\connect-ai\watchlist.py    C:\project_list\NA-stock-ai\watchlist.py
+copy /Y C:\project_list\connect-ai\regime.py      C:\project_list\NA-stock-ai\regime.py
+copy /Y C:\project_list\connect-ai\buy_score.py   C:\project_list\NA-stock-ai\buy_score.py
+copy /Y C:\project_list\connect-ai\exit_score.py  C:\project_list\NA-stock-ai\exit_score.py
+copy /Y C:\project_list\connect-ai\monitor.py     C:\project_list\NA-stock-ai\monitor.py
 
 echo [3/4] Deploying agent skills to brain company folder...
 xcopy /E /I /Y "C:\project_list\connect-ai\agent-skills" "C:\project_list\ai_agent_antigravity\_company\_agents"
